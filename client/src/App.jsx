@@ -9,6 +9,7 @@ export default function App() {
   const [platform, setPlatform] = useState("");
 
   const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
+  console.log("API URL:", API);
 
   // Platform patterns
   const platformPatterns = [
@@ -142,9 +143,9 @@ export default function App() {
   return (
     <div className="wrapper">
       <div className="card">
-        <h1 className="title">Mega Downloader</h1>
+        <h1 className="title">Mega Video Downloader</h1>
         <p className="subtitle">
-          Download <b>videos & images</b> from <b>YouTube, TikTok, Instagram, Pinterest, Facebook, Twitter</b> and more
+          Download <b>videos & images</b> from <b>YouTube, TikTok, Instagram, Pinterest, Facebook, Twitter(X)</b> and more
         </p>
 
         <input
