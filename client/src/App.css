@@ -1,0 +1,231 @@
+/* App.css */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.wrapper {
+  height: 100vh;
+  background: #0a0a0a;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+}
+
+.card {
+  width: 100%;
+  max-width: 500px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid #222;
+  border-radius: 2px;
+  padding: 25px;
+  text-align: center;
+  color: #fff;
+  font-family: 'Saira', sans-serif;
+}
+
+.title {
+  font-size: 24px;
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: #aaa;
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+
+.input {
+  width: 85%;
+  padding: 12px;
+  border-radius: 2px;
+  border: 1px solid #444;
+  background: transparent;
+  color: #fff;
+  margin-bottom: 10px;
+  outline: none;
+  font-size: 14px;
+}
+
+.input:focus {
+  border-color: #fff;
+}
+
+.button {
+  width: 50%;
+  padding: 12px;
+  margin-top: 8px;
+  border-radius: 2px;
+  border: 1px solid #fff;
+  background: #fff;
+  color: #000;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.button:hover:not(:disabled) {
+  background-color: #606060;
+  border-color: #606060;
+}
+
+.button:active:not(:disabled) {
+  background-color: #b9b9b9;
+  border-color: #b9b9b9;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.loaderWrapper {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #333;
+  border-top: 3px solid #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loadingText {
+  font-size: 12px;
+  color: #aaa;
+}
+
+.status {
+  margin-top: 15px;
+  font-size: 13px;
+  color: #c78f3a;
+  min-height: 20px;
+}
+
+.note {
+  font-size: 16px;
+  color: #aa5252;
+  margin-top: 2px;
+  font-style: italic;
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .card {
+    padding: 20px;
+  }
+  
+  .input {
+    width: 100%;
+  }
+  
+  .button {
+    width: 100%;
+  }
+  
+  .title {
+    font-size: 20px;
+  }
+}
+
+/* Add these to your existing App.css */
+
+.progressContainer {
+  margin: 20px 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.progressBarWrapper {
+  flex: 1;
+  height: 8px;
+  background: #222;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progressBarFill {
+  height: 100%;
+  background: linear-gradient(90deg, #fff, #ccc);
+  transition: width 0.3s ease;
+  border-radius: 4px;
+}
+
+.progressPercentage {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  min-width: 45px;
+  text-align: right;
+}
+
+/* Update existing button style */
+.button {
+  width: 50%;
+  padding: 12px;
+  border-radius: 2px;
+  border: 1px solid #fff;
+  background: #fff;
+  color: #000;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  margin-bottom: 10px;
+}
+
+.button:hover:not(:disabled) {
+  background: transparent;
+  color: #fff;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #666;
+  border-color: #666;
+}
+
+/* Update loaderWrapper */
+.loaderWrapper {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .button {
+    width: 100%;
+  }
+  
+  .progressContainer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 5px;
+  }
+  
+  .progressPercentage {
+    text-align: center;
+  }
+}
