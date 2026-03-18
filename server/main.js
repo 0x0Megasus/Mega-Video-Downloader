@@ -4,9 +4,14 @@ import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import cors from "cors";
+import dns from "dns";
 import { TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
 import { NewMessage } from "telegram/events/index.js";
+
+// Force IPv4 and use reliable DNS
+dns.setDefaultResultOrder('ipv4first');
+dns.setServers(['8.8.8.8', '1.1.1.1']); // Google & Cloudflare DNS
 
 dotenv.config();
 
@@ -138,33 +143,96 @@ const getPlatformFromUrl = (url) => {
   return null;
 };
 
-// Telegram client
-const client = new TelegramClient(
-  new StringSession(process.env.SESSION || ""),
-  Number(process.env.API_ID),
-  process.env.API_HASH,
-  { connectionRetries: 5,
-    useWSS: false, // Force TCP instead of WebSocket
-    baseDc: 2, // Force Data Center 2 (try 1,2,3,4,5 if this doesn't work)
-    ipVersion: 4, // Force IPv4 only
-   }
-);
+// Telegram DC addresses (hardcoded to avoid DNS issues)
+const TELEGRAM_SERVERS = {
+  1: { ip: "149.154.175.53", port: 443 },
+  2: { ip: "149.154.167.51", port: 443 },
+  3: { ip: "149.154.175.100", port: 443 },
+  4: { ip: "149.154.167.91", port: 443 },
+  5: { ip: "91.108.56.130", port: 443 }
+};
 
+let client;
 let bot;
 let ready = false;
+let currentDc = 2; // Start with DC2 (most reliable)
 
-(async () => {
-  await client.connect();
+async function connectTelegram() {
+  try {
+    console.log(`Attempting to connect to Telegram DC${currentDc}...`);
+    
+    if (!apiId || !apiHash || !session) {
+      throw new Error("Missing required environment variables");
+    }
 
-  if (!(await client.isUserAuthorized())) {
-    console.log("Invalid session");
-    process.exit(1);
+    // Create client with forced connection settings
+    client = new TelegramClient(
+      new StringSession(session),
+      apiId,
+      apiHash,
+      {
+        connectionRetries: 5,
+        useWSS: false, // Force TCP instead of WebSocket
+        baseDc: currentDc,
+        ipVersion: 4, // Force IPv4
+        deviceModel: "Railway Server",
+        systemVersion: "Linux",
+        appVersion: "1.0.0",
+        langCode: "en",
+        timeout: 30, // Increase timeout
+      }
+    );
+
+    // Manually set the DC connection
+    const server = TELEGRAM_SERVERS[currentDc];
+    client.session.setDC(currentDc, server.ip, server.port);
+    
+    console.log(`Connecting to DC${currentDc} at ${server.ip}:${server.port}`);
+
+    // Connect with timeout
+    await Promise.race([
+      client.connect(),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Connection timeout")), 30000)
+      )
+    ]);
+
+    // Check authorization
+    if (!(await client.isUserAuthorized())) {
+      throw new Error("Session expired or invalid");
+    }
+
+    // Get bot entity
+    bot = await client.getEntity(botUsername);
+    
+    ready = true;
+    console.log(`✅ Telegram connected successfully on DC${currentDc}`);
+
+    // Set up reconnection handler
+    client.addEventHandler((update) => {
+      if (update.className === 'UpdateUserStatus') {
+        console.log("Connection status changed");
+      }
+    });
+
+  } catch (error) {
+    console.error(`❌ Connection failed on DC${currentDc}:`, error.message);
+    
+    // Try next DC
+    if (currentDc < 5) {
+      currentDc++;
+      console.log(`Trying next DC (${currentDc})...`);
+      setTimeout(connectTelegram, 3000);
+    } else {
+      console.error("All DCs failed. Will retry from DC1 in 30 seconds.");
+      currentDc = 1;
+      setTimeout(connectTelegram, 30000);
+    }
   }
+}
 
-  bot = await client.getEntity(process.env.BOT_USERNAME);
-  ready = true;
-  console.log("Telegram ready");
-})();
+// Start Telegram connection
+connectTelegram();
 
 // Start download
 app.post("/api/download", async (req, res) => {
@@ -303,4 +371,14 @@ app.get("/api/info/:id", (req, res) => {
 
 app.listen(PORT, () => {
   console.log("Server running on", PORT);
+});
+
+// Handle uncaught errors
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+  if (err.message.includes('getaddrinfo') || err.message.includes('EINVAL')) {
+    console.log('DNS issue detected, restarting connection...');
+    ready = false;
+    connectTelegram();
+  }
 });
