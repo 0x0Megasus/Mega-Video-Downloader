@@ -143,7 +143,11 @@ const client = new TelegramClient(
   new StringSession(process.env.SESSION || ""),
   Number(process.env.API_ID),
   process.env.API_HASH,
-  { connectionRetries: 5 }
+  { connectionRetries: 5,
+    useWSS: false, // Force TCP instead of WebSocket
+    baseDc: 2, // Force Data Center 2 (try 1,2,3,4,5 if this doesn't work)
+    ipVersion: 4, // Force IPv4 only
+   }
 );
 
 let bot;
