@@ -267,6 +267,7 @@ async function ensureConnection() {
 // ============================================
 
 // Start download
+a// Start download - STREAMING VERSION
 app.post("/api/download", async (req, res) => {
   const { url } = req.body;
 
@@ -280,12 +281,9 @@ app.post("/api/download", async (req, res) => {
 
   const platform = getPlatformFromUrl(url);
   if (!platform) {
-    return res.status(400).json({ 
-      error: "URL not supported" 
-    });
+    return res.status(400).json({ error: "URL not supported" });
   }
 
-  // Check connection before proceeding
   try {
     await ensureConnection();
   } catch (error) {
@@ -302,16 +300,14 @@ app.post("/api/download", async (req, res) => {
 
     const handler = async (event) => {
       const msg = event.message;
-
       if (!msg.senderId || msg.senderId.value !== bot.id.value) return;
 
       if (msg.media?.document || msg.media?.photo) {
         try {
-          let buffer;
-          let fileExt = "mp4";
-          let fileType = "video";
-          
           let total = 1;
+          let fileType = "video";
+          let fileExt = "mp4";
+          
           if (msg.media?.document) {
             total = msg.media.document.size || 1;
           } else if (msg.media?.photo) {
@@ -320,40 +316,77 @@ app.post("/api/download", async (req, res) => {
             fileType = "image";
           }
 
-          buffer = await client.downloadMedia(msg, {
+          // Instead of saving to file, stream directly to response
+          const stream = await client.downloadMedia(msg, {
             progressCallback: (received) => {
               const percent = Math.floor((received / total) * 100);
               progressMap.set(id, percent);
             },
           });
 
-          const dir = path.join(__dirname, "temp");
-          if (!fs.existsSync(dir)) fs.mkdirSync(dir);
-
-          const fileName = `content_${id}.${fileExt}`;
-          const filePath = path.join(dir, fileName);
-          fs.writeFileSync(filePath, buffer);
-
-          files.set(id, { path: filePath, type: fileType });
+          // Store the stream info
+          files.set(id, { 
+            stream: stream,
+            type: fileType,
+            ext: fileExt,
+            size: total
+          });
+          
           progressMap.set(id, 100);
+          console.log(`Download ready for streaming ${id}`);
 
         } catch (error) {
           console.error(`Download failed:`, error);
           progressMap.set(id, -1);
         }
-
         client.removeEventHandler(handler);
       }
     };
 
     client.addEventHandler(handler, new NewMessage({}));
-    
     res.json({ id, platform });
 
   } catch (error) {
     console.error("Failed to process download:", error);
     progressMap.delete(id);
     res.status(500).json({ error: "Failed to process download" });
+  }
+});
+
+// Download file endpoint - STREAMING VERSION
+app.get("/api/file/:id", async (req, res) => {
+  const fileData = files.get(req.params.id);
+
+  if (!fileData) {
+    return res.status(404).json({ error: "File not found" });
+  }
+
+  const fileName = fileData.type === "image" ? "image.jpg" : "video.mp4";
+  
+  // Set headers for download
+  res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+  res.setHeader('Content-Type', fileData.type === "image" ? 'image/jpeg' : 'video/mp4');
+  
+  // Stream directly to client
+  try {
+    // If it's a buffer or stream, pipe it
+    if (Buffer.isBuffer(fileData.stream)) {
+      res.send(fileData.stream);
+    } else if (fileData.stream && fileData.stream.pipe) {
+      fileData.stream.pipe(res);
+    } else {
+      res.send(fileData.stream);
+    }
+    
+    // Clean up after streaming
+    res.on('finish', () => {
+      files.delete(req.params.id);
+      progressMap.delete(req.params.id);
+      console.log(`Cleaned up ${req.params.id}`);
+    });
+  } catch (error) {
+    console.error("Streaming error:", error);
+    res.status(500).json({ error: "Failed to stream file" });
   }
 });
 
