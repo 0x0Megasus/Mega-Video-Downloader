@@ -266,8 +266,7 @@ async function ensureConnection() {
 // API ENDPOINTS
 // ============================================
 
-// Start download
-a// Start download - STREAMING VERSION
+// Start download - STREAMING VERSION
 app.post("/api/download", async (req, res) => {
   const { url } = req.body;
 
@@ -353,7 +352,7 @@ app.post("/api/download", async (req, res) => {
   }
 });
 
-// Download file endpoint - STREAMING VERSION
+// Download file endpoint - STREAMING VERSION (FIXED - NO DUPLICATE)
 app.get("/api/file/:id", async (req, res) => {
   const fileData = files.get(req.params.id);
 
@@ -401,29 +400,12 @@ app.get("/api/progress/:id", (req, res) => {
   res.json({ progress });
 });
 
-// Download file
-app.get("/api/file/:id", (req, res) => {
-  const fileData = files.get(req.params.id);
-
-  if (!fileData || !fs.existsSync(fileData.path)) {
-    return res.status(404).json({ error: "File not found" });
-  }
-
-  const fileName = fileData.type === "image" ? "image.jpg" : "video.mp4";
-  
-  res.download(fileData.path, fileName, () => {
-    fs.unlinkSync(fileData.path);
-    files.delete(req.params.id);
-    progressMap.delete(req.params.id);
-  });
-});
-
 // Get file info
 app.get("/api/info/:id", (req, res) => {
   const fileData = files.get(req.params.id);
   
   res.json({ 
-    exists: !!fileData && fs.existsSync(fileData.path),
+    exists: !!fileData,
     type: fileData?.type || null
   });
 });
