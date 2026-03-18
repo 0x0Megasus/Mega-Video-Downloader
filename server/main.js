@@ -10,6 +10,28 @@ import { NewMessage } from "telegram/events/index.js";
 
 dotenv.config();
 
+// Debug environment variables
+console.log("=== RAW ENVIRONMENT VARIABLES ===");
+console.log("API_ID:", JSON.stringify(process.env.API_ID));
+console.log("API_HASH:", JSON.stringify(process.env.API_HASH));
+console.log("SESSION length:", process.env.SESSION?.length);
+console.log("SESSION first 50 chars:", process.env.SESSION?.substring(0, 50));
+console.log("BOT_USERNAME:", JSON.stringify(process.env.BOT_USERNAME));
+console.log("=================================");
+
+// Force clean the variables
+const apiId = Number(process.env.API_ID?.trim());
+const apiHash = process.env.API_HASH?.trim();
+const session = process.env.SESSION?.trim();
+const botUsername = process.env.BOT_USERNAME?.trim();
+
+console.log("=== CLEANED VARIABLES ===");
+console.log("API_ID (number):", apiId);
+console.log("API_HASH length:", apiHash?.length);
+console.log("SESSION length:", session?.length);
+console.log("BOT_USERNAME:", botUsername);
+console.log("=========================");
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
