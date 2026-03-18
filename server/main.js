@@ -27,8 +27,8 @@ app.use(cors({ origin: process.env.CLIENT_URL }));
 const PORT = process.env.PORT || 5000;
 
 // State
-const progressMap = new Map();
-const files = new Map();
+const progressMap = new Map(); // id -> progress
+const files = new Map(); // id -> { buffer, type, ext }
 
 // Platform validation patterns
 const platformValidators = [
@@ -122,7 +122,7 @@ const getPlatformFromUrl = (url) => {
 };
 
 // ============================================
-// TELEGRAM CONNECTION - FINAL FIXED VERSION
+// TELEGRAM CONNECTION
 // ============================================
 
 // Hardcoded DC4 - confirmed working
@@ -216,10 +216,9 @@ async function connectTelegram() {
 connectTelegram();
 
 // ============================================
-// KEEP-ALIVE - FIXED VERSION
+// KEEP-ALIVE
 // ============================================
 
-// Don't let keep-alive failures affect ready state
 setInterval(async () => {
   if (client) {
     try {
@@ -228,28 +227,22 @@ setInterval(async () => {
       }));
       console.log("💓 Keep-alive OK");
       
-      // If we get here, connection is good - ensure ready is true
       if (!ready) {
         console.log("✅ Connection restored, marking as ready");
         ready = true;
       }
     } catch (err) {
       console.log("💓 Keep-alive failed (temporary)");
-      // DON'T set ready = false here
-      // Let the next request try to use the connection
-      // If it's really dead, the download endpoint will handle it
     }
   }
-}, 45000); // Check every 45 seconds
+}, 45000);
 
-// Also verify connection before downloads
 async function ensureConnection() {
   if (!client) {
     throw new Error("Telegram client not initialized");
   }
   
   if (!ready) {
-    // Try a quick ping to see if connection is actually dead
     try {
       await client.invoke(new Api.ping.Ping({ ping_id: BigInt(Date.now()) }));
       console.log("✅ Connection verified, marking as ready");
@@ -266,7 +259,7 @@ async function ensureConnection() {
 // API ENDPOINTS
 // ============================================
 
-// Start download - STREAMING VERSION
+// Start download - BUFFER VERSION (RELIABLE)
 app.post("/api/download", async (req, res) => {
   const { url } = req.body;
 
@@ -315,27 +308,27 @@ app.post("/api/download", async (req, res) => {
             fileType = "image";
           }
 
-          // Instead of saving to file, stream directly to response
-          const stream = await client.downloadMedia(msg, {
+          // Download the ENTIRE file into memory as buffer
+          const buffer = await client.downloadMedia(msg, {
             progressCallback: (received) => {
               const percent = Math.floor((received / total) * 100);
               progressMap.set(id, percent);
             },
           });
 
-          // Store the stream info
+          // Store the buffer (not stream)
           files.set(id, { 
-            stream: stream,
+            buffer: buffer,
             type: fileType,
             ext: fileExt,
             size: total
           });
           
           progressMap.set(id, 100);
-          console.log(`Download ready for streaming ${id}`);
+          console.log(`✅ Download complete for ${id} (${(total/1024/1024).toFixed(2)} MB)`);
 
         } catch (error) {
-          console.error(`Download failed:`, error);
+          console.error(`❌ Download failed:`, error);
           progressMap.set(id, -1);
         }
         client.removeEventHandler(handler);
@@ -352,12 +345,12 @@ app.post("/api/download", async (req, res) => {
   }
 });
 
-// Download file endpoint - STREAMING VERSION (FIXED - NO DUPLICATE)
+// Download file endpoint - BUFFER VERSION
 app.get("/api/file/:id", async (req, res) => {
   const fileData = files.get(req.params.id);
 
-  if (!fileData) {
-    return res.status(404).json({ error: "File not found" });
+  if (!fileData || !fileData.buffer) {
+    return res.status(404).json({ error: "File not found or expired" });
   }
 
   const fileName = fileData.type === "image" ? "image.jpg" : "video.mp4";
@@ -365,28 +358,15 @@ app.get("/api/file/:id", async (req, res) => {
   // Set headers for download
   res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
   res.setHeader('Content-Type', fileData.type === "image" ? 'image/jpeg' : 'video/mp4');
+  res.setHeader('Content-Length', fileData.buffer.length);
   
-  // Stream directly to client
-  try {
-    // If it's a buffer or stream, pipe it
-    if (Buffer.isBuffer(fileData.stream)) {
-      res.send(fileData.stream);
-    } else if (fileData.stream && fileData.stream.pipe) {
-      fileData.stream.pipe(res);
-    } else {
-      res.send(fileData.stream);
-    }
-    
-    // Clean up after streaming
-    res.on('finish', () => {
-      files.delete(req.params.id);
-      progressMap.delete(req.params.id);
-      console.log(`Cleaned up ${req.params.id}`);
-    });
-  } catch (error) {
-    console.error("Streaming error:", error);
-    res.status(500).json({ error: "Failed to stream file" });
-  }
+  // Send the buffer
+  res.send(fileData.buffer);
+  
+  // Clean up after sending
+  files.delete(req.params.id);
+  progressMap.delete(req.params.id);
+  console.log(`🧹 Cleaned up ${req.params.id}`);
 });
 
 // Get progress
@@ -405,23 +385,24 @@ app.get("/api/info/:id", (req, res) => {
   const fileData = files.get(req.params.id);
   
   res.json({ 
-    exists: !!fileData,
-    type: fileData?.type || null
+    exists: !!(fileData && fileData.buffer),
+    type: fileData?.type || null,
+    size: fileData?.buffer?.length || 0
   });
 });
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
 
 // Debug - log ready state periodically
 setInterval(() => {
-  console.log(`📊 Status - Ready: ${ready}, Client: ${!!client}`);
+  console.log(`📊 Status - Ready: ${ready}, Client: ${!!client}, Files: ${files.size}`);
 }, 30000);
 
 // Handle errors gracefully
 process.on('uncaughtException', (err) => {
-  console.error('Fatal error:', err.message);
+  console.error('💥 Fatal error:', err.message);
   // Don't exit on keep-alive errors
   if (!err.message.includes('ping') && !err.message.includes('Ping')) {
     process.exit(1);
