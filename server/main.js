@@ -28,9 +28,9 @@ const PORT = process.env.PORT || 5000;
 
 // State
 const progressMap = new Map(); // id -> progress
-const files = new Map(); // id -> { buffer, type, ext }
+const files = new Map(); // id -> { buffer, type, ext, mime }
 
-// Platform validation patterns - ADDED vt.tiktok.com SUPPORT
+// Platform validation patterns - WITH vt.tiktok.com SUPPORT
 const platformValidators = [
   { 
     name: "YouTube",
@@ -46,7 +46,7 @@ const platformValidators = [
       /^(https?:\/\/)?(www\.)?tiktok\.com\/@[\w.-]+\/video\/\d+/,
       /^(https?:\/\/)?(www\.)?tiktok\.com\/[\w-]+/,
       /^(https?:\/\/)?(vm\.tiktok\.com)\/[\w-]+/,
-      /^(https?:\/\/)?(vt\.tiktok\.com)\/[\w-]+/  // ADDED vt.tiktok.com support
+      /^(https?:\/\/)?(vt\.tiktok\.com)\/[\w-]+/
     ]
   },
   { 
@@ -260,7 +260,7 @@ async function ensureConnection() {
 // API ENDPOINTS - FIXED FOR IMAGES
 // ============================================
 
-// Start download - FIXED FOR IMAGES
+// Start download - FIXED FOR IMAGES (NO MP4 FOR IMAGES)
 app.post("/api/download", async (req, res) => {
   const { url } = req.body;
 
@@ -299,19 +299,20 @@ app.post("/api/download", async (req, res) => {
       if (msg.media) {
         try {
           let buffer;
-          let fileType = "video";
-          let fileExt = "mp4";
+          let fileType = "unknown";
+          let fileExt = "bin";
           let total = 1;
+          let mimeType = "";
           
           // CASE 1: It's a photo (image)
           if (msg.media.photo) {
-            console.log("📸 Detected image file");
+            console.log("📸 Detected image (photo type)");
             fileType = "image";
             fileExt = "jpg";
+            mimeType = "image/jpeg";
             
             // Get photo size
             if (msg.media.photo.sizes && msg.media.photo.sizes.length > 0) {
-              // Get the largest size
               const sizes = msg.media.photo.sizes;
               const largestSize = sizes[sizes.length - 1];
               total = largestSize?.bytes || 1;
@@ -325,20 +326,34 @@ app.post("/api/download", async (req, res) => {
               },
             });
           }
-          // CASE 2: It's a document (could be video or image document)
+          // CASE 2: It's a document
           else if (msg.media.document) {
             total = msg.media.document.size || 1;
+            mimeType = msg.media.document.mimeType || "";
             
             // Check if it's an image document
-            const mimeType = msg.media.document.mimeType || "";
             if (mimeType.startsWith("image/")) {
               console.log("📸 Detected image document");
               fileType = "image";
               fileExt = mimeType.split("/")[1] || "jpg";
-            } else {
+              if (fileExt === "jpeg") fileExt = "jpg";
+            } 
+            // Check if it's a video
+            else if (mimeType.startsWith("video/")) {
               console.log("🎥 Detected video file");
               fileType = "video";
               fileExt = "mp4";
+            }
+            // Check if it's a GIF
+            else if (mimeType === "image/gif") {
+              console.log("🎞️ Detected GIF");
+              fileType = "image";
+              fileExt = "gif";
+            }
+            else {
+              console.log("📁 Detected unknown file type:", mimeType);
+              fileType = "unknown";
+              fileExt = "bin";
             }
             
             // Download document
@@ -350,19 +365,20 @@ app.post("/api/download", async (req, res) => {
             });
           }
 
-          if (buffer) {
-            // Store the buffer
+          if (buffer && buffer.length > 0) {
+            // Store the buffer with correct type and extension
             files.set(id, { 
               buffer: buffer,
               type: fileType,
               ext: fileExt,
+              mime: mimeType,
               size: total
             });
             
             progressMap.set(id, 100);
-            console.log(`✅ Download complete for ${id} (${fileType}, ${(total/1024/1024).toFixed(2)} MB)`);
+            console.log(`✅ Download complete for ${id} (${fileType}, ${fileExt}, ${(total/1024/1024).toFixed(2)} MB)`);
           } else {
-            throw new Error("No media buffer received");
+            throw new Error("No media buffer received or buffer empty");
           }
 
         } catch (error) {
@@ -397,21 +413,34 @@ app.get("/api/file/:id", async (req, res) => {
   
   if (fileData.type === "image") {
     fileName = `image.${fileData.ext}`;
-    // Handle different image MIME types
-    if (fileData.ext === 'jpg' || fileData.ext === 'jpeg') {
-      contentType = 'image/jpeg';
-    } else if (fileData.ext === 'png') {
-      contentType = 'image/png';
-    } else if (fileData.ext === 'gif') {
-      contentType = 'image/gif';
-    } else if (fileData.ext === 'webp') {
-      contentType = 'image/webp';
-    } else {
-      contentType = 'image/jpeg'; // default
+    
+    // Set correct content type based on extension
+    switch(fileData.ext) {
+      case 'jpg':
+      case 'jpeg':
+        contentType = 'image/jpeg';
+        break;
+      case 'png':
+        contentType = 'image/png';
+        break;
+      case 'gif':
+        contentType = 'image/gif';
+        break;
+      case 'webp':
+        contentType = 'image/webp';
+        break;
+      case 'bmp':
+        contentType = 'image/bmp';
+        break;
+      default:
+        contentType = 'image/jpeg';
     }
-  } else {
+  } else if (fileData.type === "video") {
     fileName = "video.mp4";
     contentType = "video/mp4";
+  } else {
+    fileName = `file.${fileData.ext}`;
+    contentType = 'application/octet-stream';
   }
   
   // Set headers for download
@@ -439,7 +468,7 @@ app.get("/api/progress/:id", (req, res) => {
   res.json({ progress });
 });
 
-// Get file info - UPDATED FOR IMAGES
+// Get file info
 app.get("/api/info/:id", (req, res) => {
   const fileData = files.get(req.params.id);
   
