@@ -30,7 +30,7 @@ const PORT = process.env.PORT || 5000;
 const progressMap = new Map(); // id -> progress
 const files = new Map(); // id -> { buffer, type, ext }
 
-// Platform validation patterns
+// Platform validation patterns - ADDED vt.tiktok.com SUPPORT
 const platformValidators = [
   { 
     name: "YouTube",
@@ -45,7 +45,8 @@ const platformValidators = [
     patterns: [
       /^(https?:\/\/)?(www\.)?tiktok\.com\/@[\w.-]+\/video\/\d+/,
       /^(https?:\/\/)?(www\.)?tiktok\.com\/[\w-]+/,
-      /^(https?:\/\/)?(vm\.tiktok\.com)\/[\w-]+/
+      /^(https?:\/\/)?(vm\.tiktok\.com)\/[\w-]+/,
+      /^(https?:\/\/)?(vt\.tiktok\.com)\/[\w-]+/  // ADDED vt.tiktok.com support
     ]
   },
   { 
@@ -256,10 +257,10 @@ async function ensureConnection() {
 }
 
 // ============================================
-// API ENDPOINTS
+// API ENDPOINTS - FIXED FOR IMAGES
 // ============================================
 
-// Start download - BUFFER VERSION (RELIABLE)
+// Start download - FIXED FOR IMAGES
 app.post("/api/download", async (req, res) => {
   const { url } = req.body;
 
@@ -294,38 +295,75 @@ app.post("/api/download", async (req, res) => {
       const msg = event.message;
       if (!msg.senderId || msg.senderId.value !== bot.id.value) return;
 
-      if (msg.media?.document || msg.media?.photo) {
+      // Handle BOTH document (videos) AND photo (images)
+      if (msg.media) {
         try {
-          let total = 1;
+          let buffer;
           let fileType = "video";
           let fileExt = "mp4";
+          let total = 1;
           
-          if (msg.media?.document) {
-            total = msg.media.document.size || 1;
-          } else if (msg.media?.photo) {
-            total = msg.media.photo.sizes?.pop()?.bytes || 1;
-            fileExt = "jpg";
+          // CASE 1: It's a photo (image)
+          if (msg.media.photo) {
+            console.log("📸 Detected image file");
             fileType = "image";
+            fileExt = "jpg";
+            
+            // Get photo size
+            if (msg.media.photo.sizes && msg.media.photo.sizes.length > 0) {
+              // Get the largest size
+              const sizes = msg.media.photo.sizes;
+              const largestSize = sizes[sizes.length - 1];
+              total = largestSize?.bytes || 1;
+            }
+            
+            // Download photo
+            buffer = await client.downloadMedia(msg, {
+              progressCallback: (received) => {
+                const percent = Math.floor((received / total) * 100);
+                progressMap.set(id, percent);
+              },
+            });
+          }
+          // CASE 2: It's a document (could be video or image document)
+          else if (msg.media.document) {
+            total = msg.media.document.size || 1;
+            
+            // Check if it's an image document
+            const mimeType = msg.media.document.mimeType || "";
+            if (mimeType.startsWith("image/")) {
+              console.log("📸 Detected image document");
+              fileType = "image";
+              fileExt = mimeType.split("/")[1] || "jpg";
+            } else {
+              console.log("🎥 Detected video file");
+              fileType = "video";
+              fileExt = "mp4";
+            }
+            
+            // Download document
+            buffer = await client.downloadMedia(msg, {
+              progressCallback: (received) => {
+                const percent = Math.floor((received / total) * 100);
+                progressMap.set(id, percent);
+              },
+            });
           }
 
-          // Download the ENTIRE file into memory as buffer
-          const buffer = await client.downloadMedia(msg, {
-            progressCallback: (received) => {
-              const percent = Math.floor((received / total) * 100);
-              progressMap.set(id, percent);
-            },
-          });
-
-          // Store the buffer (not stream)
-          files.set(id, { 
-            buffer: buffer,
-            type: fileType,
-            ext: fileExt,
-            size: total
-          });
-          
-          progressMap.set(id, 100);
-          console.log(`✅ Download complete for ${id} (${(total/1024/1024).toFixed(2)} MB)`);
+          if (buffer) {
+            // Store the buffer
+            files.set(id, { 
+              buffer: buffer,
+              type: fileType,
+              ext: fileExt,
+              size: total
+            });
+            
+            progressMap.set(id, 100);
+            console.log(`✅ Download complete for ${id} (${fileType}, ${(total/1024/1024).toFixed(2)} MB)`);
+          } else {
+            throw new Error("No media buffer received");
+          }
 
         } catch (error) {
           console.error(`❌ Download failed:`, error);
@@ -345,7 +383,7 @@ app.post("/api/download", async (req, res) => {
   }
 });
 
-// Download file endpoint - BUFFER VERSION
+// Download file endpoint - FIXED FOR IMAGES
 app.get("/api/file/:id", async (req, res) => {
   const fileData = files.get(req.params.id);
 
@@ -353,11 +391,32 @@ app.get("/api/file/:id", async (req, res) => {
     return res.status(404).json({ error: "File not found or expired" });
   }
 
-  const fileName = fileData.type === "image" ? "image.jpg" : "video.mp4";
+  // Set correct filename and content type based on file type
+  let fileName;
+  let contentType;
+  
+  if (fileData.type === "image") {
+    fileName = `image.${fileData.ext}`;
+    // Handle different image MIME types
+    if (fileData.ext === 'jpg' || fileData.ext === 'jpeg') {
+      contentType = 'image/jpeg';
+    } else if (fileData.ext === 'png') {
+      contentType = 'image/png';
+    } else if (fileData.ext === 'gif') {
+      contentType = 'image/gif';
+    } else if (fileData.ext === 'webp') {
+      contentType = 'image/webp';
+    } else {
+      contentType = 'image/jpeg'; // default
+    }
+  } else {
+    fileName = "video.mp4";
+    contentType = "video/mp4";
+  }
   
   // Set headers for download
   res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-  res.setHeader('Content-Type', fileData.type === "image" ? 'image/jpeg' : 'video/mp4');
+  res.setHeader('Content-Type', contentType);
   res.setHeader('Content-Length', fileData.buffer.length);
   
   // Send the buffer
@@ -366,7 +425,7 @@ app.get("/api/file/:id", async (req, res) => {
   // Clean up after sending
   files.delete(req.params.id);
   progressMap.delete(req.params.id);
-  console.log(`🧹 Cleaned up ${req.params.id}`);
+  console.log(`🧹 Cleaned up ${req.params.id} (${fileData.type})`);
 });
 
 // Get progress
@@ -380,13 +439,14 @@ app.get("/api/progress/:id", (req, res) => {
   res.json({ progress });
 });
 
-// Get file info
+// Get file info - UPDATED FOR IMAGES
 app.get("/api/info/:id", (req, res) => {
   const fileData = files.get(req.params.id);
   
   res.json({ 
     exists: !!(fileData && fileData.buffer),
     type: fileData?.type || null,
+    ext: fileData?.ext || null,
     size: fileData?.buffer?.length || 0
   });
 });
