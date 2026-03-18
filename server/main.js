@@ -28,7 +28,7 @@ const PORT = process.env.PORT || 5000;
 
 // State
 const progressMap = new Map(); // id -> progress
-const files = new Map(); // id -> { buffer, type, ext, mime }
+const files = new Map(); // id -> { buffer, type, ext, mime, platform }
 
 // Platform validation patterns - WITH vt.tiktok.com SUPPORT
 const platformValidators = [
@@ -257,10 +257,10 @@ async function ensureConnection() {
 }
 
 // ============================================
-// API ENDPOINTS - FIXED FOR IMAGES
+// API ENDPOINTS - FINAL VERSION
 // ============================================
 
-// Start download - FIXED FOR IMAGES (NO MP4 FOR IMAGES)
+// Start download - FIXED FOR IMAGES
 app.post("/api/download", async (req, res) => {
   const { url } = req.body;
 
@@ -366,12 +366,13 @@ app.post("/api/download", async (req, res) => {
           }
 
           if (buffer && buffer.length > 0) {
-            // Store the buffer with correct type and extension
+            // Store the buffer with correct type, extension, AND PLATFORM
             files.set(id, { 
               buffer: buffer,
               type: fileType,
               ext: fileExt,
               mime: mimeType,
+              platform: platform,
               size: total
             });
             
@@ -399,7 +400,7 @@ app.post("/api/download", async (req, res) => {
   }
 });
 
-// Download file endpoint - FIXED FOR IMAGES
+// Download file endpoint - WITH UNIQUE FILENAMES
 app.get("/api/file/:id", async (req, res) => {
   const fileData = files.get(req.params.id);
 
@@ -407,12 +408,16 @@ app.get("/api/file/:id", async (req, res) => {
     return res.status(404).json({ error: "File not found or expired" });
   }
 
-  // Set correct filename and content type based on file type
+  // Create a unique filename with platform, timestamp, and random string
+  const timestamp = Date.now();
+  const randomStr = Math.random().toString(36).substring(2, 8);
+  const platform = fileData.platform || "media";
   let fileName;
   let contentType;
   
   if (fileData.type === "image") {
-    fileName = `image.${fileData.ext}`;
+    // Format: platform_timestamp_random.image
+    fileName = `${platform}_${timestamp}_${randomStr}.${fileData.ext}`;
     
     // Set correct content type based on extension
     switch(fileData.ext) {
@@ -436,17 +441,21 @@ app.get("/api/file/:id", async (req, res) => {
         contentType = 'image/jpeg';
     }
   } else if (fileData.type === "video") {
-    fileName = "video.mp4";
+    // Format: platform_timestamp_random.mp4
+    fileName = `${platform}_${timestamp}_${randomStr}.mp4`;
     contentType = "video/mp4";
   } else {
-    fileName = `file.${fileData.ext}`;
+    fileName = `${platform}_${timestamp}_${randomStr}.${fileData.ext}`;
     contentType = 'application/octet-stream';
   }
   
-  // Set headers for download
+  // Set headers for download with unique filename and no caching
   res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
   res.setHeader('Content-Type', contentType);
   res.setHeader('Content-Length', fileData.buffer.length);
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   
   // Send the buffer
   res.send(fileData.buffer);
@@ -476,6 +485,7 @@ app.get("/api/info/:id", (req, res) => {
     exists: !!(fileData && fileData.buffer),
     type: fileData?.type || null,
     ext: fileData?.ext || null,
+    platform: fileData?.platform || null,
     size: fileData?.buffer?.length || 0
   });
 });
