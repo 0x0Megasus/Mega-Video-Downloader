@@ -9,10 +9,11 @@ import net from "net";
 import { TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
 import { NewMessage } from "telegram/events/index.js";
+import { Api } from "telegram/tl/index.js";
 
 // Force IPv4 only - CRITICAL FIX
 dns.setDefaultResultOrder('ipv4first');
-dns.setServers(['8.8.8.8', '1.1.1.1']); // Use reliable DNS servers
+dns.setServers(['8.8.8.8', '1.1.1.1']);
 
 dotenv.config();
 
@@ -121,7 +122,7 @@ const getPlatformFromUrl = (url) => {
 };
 
 // ============================================
-// TELEGRAM CONNECTION - THE FIXED SOLUTION
+// TELEGRAM CONNECTION - FINAL FIXED VERSION
 // ============================================
 
 // Hardcoded DC4 - confirmed working
@@ -134,12 +135,14 @@ const TELEGRAM_DC = {
 let client;
 let bot;
 let ready = false;
+let connectionAttempts = 0;
 
 async function connectTelegram() {
   try {
-    console.log(`🔌 Connecting to Telegram DC${TELEGRAM_DC.id} (${TELEGRAM_DC.ip})...`);
+    connectionAttempts++;
+    console.log(`🔌 Connecting to Telegram DC${TELEGRAM_DC.id} (attempt ${connectionAttempts})...`);
     
-    // Step 1: Test TCP connection first
+    // Test TCP connection first
     const socket = new net.Socket();
     const connectionTest = await new Promise((resolve) => {
       const timeout = setTimeout(() => {
@@ -166,7 +169,7 @@ async function connectTelegram() {
     
     console.log("✅ Network connection successful");
     
-    // Step 2: Create Telegram client
+    // Create Telegram client
     client = new TelegramClient(
       new StringSession(process.env.SESSION || ""),
       Number(process.env.API_ID),
@@ -177,53 +180,87 @@ async function connectTelegram() {
         baseDc: TELEGRAM_DC.id,
         ipVersion: 4,
         timeout: 15,
-        autoReconnect: false, // We'll handle reconnection manually
       }
     );
     
     // CRITICAL: Manually set the DC to bypass DNS
     client.session.setDC(TELEGRAM_DC.id, TELEGRAM_DC.ip, TELEGRAM_DC.port);
     
-    // Step 3: Connect
+    // Connect
     await client.connect();
     
-    // Step 4: Verify authorization
+    // Verify authorization
     if (!(await client.isUserAuthorized())) {
       throw new Error("Session expired - need new login");
     }
     
-    // Step 5: Get bot
+    // Get bot
     bot = await client.getEntity(process.env.BOT_USERNAME);
     
     ready = true;
-    console.log("✅ Telegram ready!");
-    
-    // Simple keep-alive ping
-    setInterval(async () => {
-      if (client && ready) {
-        try {
-          await client.invoke(new (await import('telegram/tl/index.js')).Api.ping.Ping({ 
-            ping_id: BigInt(Date.now()) 
-          }));
-        } catch (err) {
-          console.log("⚠️ Keep-alive failed, marking as disconnected");
-          ready = false;
-        }
-      }
-    }, 30000);
+    connectionAttempts = 0;
+    console.log("✅ Telegram ready and connected!");
     
   } catch (error) {
     console.error("❌ Connection error:", error.message);
     ready = false;
     
-    // Simple retry after delay
-    console.log("⏰ Retrying in 15 seconds...");
-    setTimeout(connectTelegram, 15000);
+    // Simple retry with backoff
+    const delay = Math.min(5000 * connectionAttempts, 30000);
+    console.log(`⏰ Retrying in ${delay/1000} seconds...`);
+    setTimeout(connectTelegram, delay);
   }
 }
 
 // Start connection
 connectTelegram();
+
+// ============================================
+// KEEP-ALIVE - FIXED VERSION
+// ============================================
+
+// Don't let keep-alive failures affect ready state
+setInterval(async () => {
+  if (client) {
+    try {
+      await client.invoke(new Api.ping.Ping({ 
+        ping_id: BigInt(Date.now()) 
+      }));
+      console.log("💓 Keep-alive OK");
+      
+      // If we get here, connection is good - ensure ready is true
+      if (!ready) {
+        console.log("✅ Connection restored, marking as ready");
+        ready = true;
+      }
+    } catch (err) {
+      console.log("💓 Keep-alive failed (temporary)");
+      // DON'T set ready = false here
+      // Let the next request try to use the connection
+      // If it's really dead, the download endpoint will handle it
+    }
+  }
+}, 45000); // Check every 45 seconds
+
+// Also verify connection before downloads
+async function ensureConnection() {
+  if (!client) {
+    throw new Error("Telegram client not initialized");
+  }
+  
+  if (!ready) {
+    // Try a quick ping to see if connection is actually dead
+    try {
+      await client.invoke(new Api.ping.Ping({ ping_id: BigInt(Date.now()) }));
+      console.log("✅ Connection verified, marking as ready");
+      ready = true;
+    } catch (err) {
+      throw new Error("Telegram not connected");
+    }
+  }
+  
+  return client;
+}
 
 // ============================================
 // API ENDPOINTS
@@ -248,7 +285,10 @@ app.post("/api/download", async (req, res) => {
     });
   }
 
-  if (!ready) {
+  // Check connection before proceeding
+  try {
+    await ensureConnection();
+  } catch (error) {
     return res.status(503).json({ error: "Telegram connecting, please wait..." });
   }
 
@@ -359,8 +399,16 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 
-// Handle errors - let Railway restart if needed
+// Debug - log ready state periodically
+setInterval(() => {
+  console.log(`📊 Status - Ready: ${ready}, Client: ${!!client}`);
+}, 30000);
+
+// Handle errors gracefully
 process.on('uncaughtException', (err) => {
   console.error('Fatal error:', err.message);
-  process.exit(1);
+  // Don't exit on keep-alive errors
+  if (!err.message.includes('ping') && !err.message.includes('Ping')) {
+    process.exit(1);
+  }
 });
