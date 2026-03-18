@@ -9,8 +9,6 @@ export default function App() {
   const [platform, setPlatform] = useState("");
 
   const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
-  console.log("API URL:", API);
-
   // Platform patterns
   const platformPatterns = [
     { name: "YouTube", pattern: /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+$/ },
