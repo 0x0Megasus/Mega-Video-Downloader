@@ -8,6 +8,7 @@ import dns from "dns";
 import { TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
 import { NewMessage } from "telegram/events/index.js";
+import { Api } from "telegram/tl/index.js"; // Add this for ping
 
 // Force IPv4 and use reliable DNS
 dns.setDefaultResultOrder('ipv4first');
@@ -155,13 +156,38 @@ const TELEGRAM_SERVERS = {
 let client;
 let bot;
 let ready = false;
-let currentDc = 2; // Start with DC2 (most reliable)
+let currentDc = 2;
+let reconnectTimer = null;
+let connectionCheckTimer = null;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 10;
+
+async function ensureConnection() {
+  if (!client || !ready) {
+    console.log("Waiting for Telegram connection...");
+    for (let i = 0; i < 30; i++) {
+      if (ready) break;
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    if (!ready) throw new Error("Telegram not connected");
+  }
+  return client;
+}
 
 async function connectTelegram() {
   try {
+    // Clear any existing timers
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    if (connectionCheckTimer) {
+      clearInterval(connectionCheckTimer);
+      connectionCheckTimer = null;
+    }
+
     console.log(`Attempting to connect to Telegram DC${currentDc}...`);
     
-    // Check if variables exist
     if (!API_ID || !API_HASH || !SESSION) {
       console.error("Missing required variables:", { 
         API_ID: !!API_ID, 
@@ -178,15 +204,19 @@ async function connectTelegram() {
       API_ID,
       API_HASH,
       {
-        connectionRetries: 5,
-        useWSS: false, // Force TCP instead of WebSocket
+        connectionRetries: 3,
+        useWSS: false,
         baseDc: currentDc,
-        ipVersion: 4, // Force IPv4
+        ipVersion: 4,
         deviceModel: "Railway Server",
         systemVersion: "Linux",
         appVersion: "1.0.0",
         langCode: "en",
-        timeout: 30, // Increase timeout
+        timeout: 30,
+        autoReconnect: true,
+        floodSleepThreshold: 60,
+        retryDelay: 2000,
+        maxRetries: 5,
       }
     );
 
@@ -213,29 +243,80 @@ async function connectTelegram() {
     bot = await client.getEntity(BOT_USERNAME);
     
     ready = true;
+    reconnectAttempts = 0;
     console.log(`✅ Telegram connected successfully on DC${currentDc}`);
 
-    // Set up reconnection handler
+    // Set up disconnect handler
     client.addEventHandler((update) => {
       if (update.className === 'UpdateUserStatus') {
         console.log("Connection status changed");
       }
     });
 
+    // Monitor connection health with ping every 30 seconds
+    connectionCheckTimer = setInterval(async () => {
+      if (client && ready) {
+        try {
+          // Send a ping to keep connection alive
+          await client.invoke(new Api.ping.Ping({ ping_id: BigInt(Date.now()) }));
+          console.log("Heartbeat OK");
+        } catch (error) {
+          console.log("Heartbeat failed, connection may be dead:", error.message);
+          ready = false;
+          clearInterval(connectionCheckTimer);
+          reconnectTelegram();
+        }
+      }
+    }, 30000);
+
+    // Handle disconnection
+    client.addEventHandler((update) => {
+      if (update.className === 'UpdateUserStatus') {
+        console.log("Connection status changed");
+      }
+    });
+
+    client.on('disconnect', () => {
+      console.log("⚠️ Disconnected from Telegram");
+      ready = false;
+      clearInterval(connectionCheckTimer);
+      reconnectTelegram();
+    });
+
+    client.on('error', (err) => {
+      console.error("Telegram client error:", err);
+    });
+
   } catch (error) {
     console.error(`❌ Connection failed on DC${currentDc}:`, error.message);
     
-    // Try next DC
+    // Try next DC with exponential backoff
     if (currentDc < 5) {
       currentDc++;
+      reconnectAttempts = 0;
       console.log(`Trying next DC (${currentDc})...`);
       setTimeout(connectTelegram, 3000);
     } else {
-      console.error("All DCs failed. Will retry from DC1 in 30 seconds.");
-      currentDc = 1;
-      setTimeout(connectTelegram, 30000);
+      reconnectAttempts++;
+      if (reconnectAttempts <= MAX_RECONNECT_ATTEMPTS) {
+        const delay = Math.min(30000 * reconnectAttempts, 300000); // Max 5 minutes
+        console.error(`All DCs failed. Retry ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} in ${delay/1000} seconds.`);
+        currentDc = 2; // Reset to DC2
+        setTimeout(connectTelegram, delay);
+      } else {
+        console.error("Max reconnection attempts reached. Please check your configuration.");
+      }
     }
   }
+}
+
+function reconnectTelegram() {
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  console.log("Scheduling reconnection in 5 seconds...");
+  reconnectTimer = setTimeout(() => {
+    console.log("Attempting to reconnect...");
+    connectTelegram();
+  }, 5000);
 }
 
 // Start Telegram connection
@@ -260,8 +341,11 @@ app.post("/api/download", async (req, res) => {
     });
   }
 
-  if (!ready) {
-    return res.status(503).json({ error: "Server is not ready yet" });
+  try {
+    // Ensure we have a connection before proceeding
+    await ensureConnection();
+  } catch (error) {
+    return res.status(503).json({ error: "Telegram not connected, please try again in a few seconds" });
   }
 
   console.log(`Processing ${platform} URL: ${url}`);
@@ -383,9 +467,11 @@ app.listen(PORT, () => {
 // Handle uncaught errors
 process.on('uncaughtException', (err) => {
   console.error('Uncaught Exception:', err);
-  if (err.message.includes('getaddrinfo') || err.message.includes('EINVAL')) {
-    console.log('DNS issue detected, restarting connection...');
+  if (err.message.includes('getaddrinfo') || err.message.includes('EINVAL') || err.message.includes('Not connected')) {
+    console.log('Connection issue detected, restarting connection...');
     ready = false;
-    connectTelegram();
+    clearInterval(connectionCheckTimer);
+    clearTimeout(reconnectTimer);
+    reconnectTelegram();
   }
 });
