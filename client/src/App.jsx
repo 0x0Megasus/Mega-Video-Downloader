@@ -92,7 +92,7 @@ export default function App() {
             
             if (currentProgress === -1) {
               clearInterval(interval);
-              const errorMsg = progressData.error || "Download failed";
+              const errorMsg = progressData.error == "⏳" ? "Unable to get media from a resource." : "Download failed";
               setStatus(`${errorMsg} ❌`);
               setLoading(false);
             } 
