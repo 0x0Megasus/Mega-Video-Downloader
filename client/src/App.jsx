@@ -92,7 +92,8 @@ export default function App() {
             
             if (currentProgress === -1) {
               clearInterval(interval);
-              setStatus("Download failed ❌");
+              const errorMsg = progressData.error || "Download failed";
+              setStatus(`${errorMsg} ❌`);
               setLoading(false);
             } 
             else if (currentProgress >= 100) {
