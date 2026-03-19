@@ -29,6 +29,7 @@ const PORT = process.env.PORT || 5000;
 // State
 const progressMap = new Map(); // id -> progress
 const files = new Map(); // id -> { buffer, type, ext, mime, platform, error, message }
+const pendingMessages = new Map(); // id -> { waitingForMedia: true }
 
 // Platform validation patterns - WITH vt.tiktok.com SUPPORT
 const platformValidators = [
@@ -257,10 +258,10 @@ async function ensureConnection() {
 }
 
 // ============================================
-// API ENDPOINTS - FINAL VERSION WITH ERROR HANDLING
+// API ENDPOINTS - FIXED FOR ⏳ HANDLING
 // ============================================
 
-// Start download - WITH ERROR HANDLING FOR NON-MEDIA RESPONSES
+// Start download - WITH PROPER ⏳ HANDLING
 app.post("/api/download", async (req, res) => {
   const { url } = req.body;
 
@@ -287,6 +288,7 @@ app.post("/api/download", async (req, res) => {
   const id = Date.now().toString();
   
   progressMap.set(id, 0);
+  pendingMessages.set(id, { waitingForMedia: true }); // Mark as waiting for media
 
   try {
     await client.sendMessage(bot, { message: url });
@@ -295,24 +297,51 @@ app.post("/api/download", async (req, res) => {
       const msg = event.message;
       if (!msg.senderId || msg.senderId.value !== bot.id.value) return;
 
-      // ✅ Handle text messages (errors from bot)
+      // Check if this ID is still waiting for a response
+      if (!pendingMessages.has(id)) return;
+      
+      // If it's a text message
       if (msg.message && !msg.media) {
-        console.log("⚠️ Bot returned text message:", msg.message);
+        console.log("🤖 Bot message:", msg.message);
+        
+        // If this is "⏳", just ignore it and keep waiting
+        if (msg.message === "⏳" || msg.message.includes("⏳")) {
+          console.log("⏳ Bot is processing, waiting for actual response...");
+          return; // Keep waiting for the real response
+        }
+        
+        // If we get here, it's a REAL error message (not ⏳)
+        console.log("❌ Bot error message:", msg.message);
         progressMap.set(id, -1);
         
-        // Store error message to show user
+        // Store the ACTUAL error message
         files.set(id, { 
           error: true,
-          message: msg.message || "This video cannot be downloaded. Please try another URL.",
+          message: msg.message || "This video cannot be downloaded",
           platform: platform
         });
         
+        // Clean up
+        pendingMessages.delete(id);
         client.removeEventHandler(handler);
+        
+        // Clean up after 10 seconds
+        setTimeout(() => {
+          if (files.has(id)) {
+            files.delete(id);
+            progressMap.delete(id);
+            console.log(`🧹 Cleaned up error for ${id}`);
+          }
+        }, 10000);
+        
         return;
       }
 
-      // Handle media (videos and images)
+      // Handle media (videos and images) - THIS IS THE SUCCESS CASE
       if (msg.media) {
+        console.log("✅ Bot sent media, processing download...");
+        pendingMessages.delete(id); // No longer waiting
+        
         try {
           let buffer;
           let fileType = "unknown";
@@ -402,6 +431,7 @@ app.post("/api/download", async (req, res) => {
           console.error(`❌ Download failed:`, error);
           progressMap.set(id, -1);
         }
+        
         client.removeEventHandler(handler);
       }
     };
@@ -412,6 +442,7 @@ app.post("/api/download", async (req, res) => {
   } catch (error) {
     console.error("Failed to process download:", error);
     progressMap.delete(id);
+    pendingMessages.delete(id);
     res.status(500).json({ error: "Failed to process download" });
   }
 });
