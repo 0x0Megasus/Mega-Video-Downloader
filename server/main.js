@@ -280,7 +280,7 @@ app.post("/api/download", async (req, res) => {
   try {
     await ensureConnection();
   } catch (error) {
-    return res.status(503).json({ error: "Telegram connecting, please wait..." });
+    return res.status(503).json({ error: "The Server is Busy, Please Try again After 5 minutes.." });
   }
 
   console.log(`Processing ${platform} URL: ${url}`);
