@@ -28,7 +28,7 @@ const PORT = process.env.PORT || 5000;
 
 // State
 const progressMap = new Map(); // id -> progress
-const files = new Map(); // id -> { buffer, type, ext, mime, platform }
+const files = new Map(); // id -> { buffer, type, ext, mime, platform, error, message }
 
 // Platform validation patterns - WITH vt.tiktok.com SUPPORT
 const platformValidators = [
@@ -257,10 +257,10 @@ async function ensureConnection() {
 }
 
 // ============================================
-// API ENDPOINTS - FINAL VERSION
+// API ENDPOINTS - FINAL VERSION WITH ERROR HANDLING
 // ============================================
 
-// Start download - FIXED FOR IMAGES
+// Start download - WITH ERROR HANDLING FOR NON-MEDIA RESPONSES
 app.post("/api/download", async (req, res) => {
   const { url } = req.body;
 
@@ -295,7 +295,23 @@ app.post("/api/download", async (req, res) => {
       const msg = event.message;
       if (!msg.senderId || msg.senderId.value !== bot.id.value) return;
 
-      // Handle BOTH document (videos) AND photo (images)
+      // ✅ Handle text messages (errors from bot)
+      if (msg.message && !msg.media) {
+        console.log("⚠️ Bot returned text message:", msg.message);
+        progressMap.set(id, -1);
+        
+        // Store error message to show user
+        files.set(id, { 
+          error: true,
+          message: msg.message || "This video cannot be downloaded. Please try another URL.",
+          platform: platform
+        });
+        
+        client.removeEventHandler(handler);
+        return;
+      }
+
+      // Handle media (videos and images)
       if (msg.media) {
         try {
           let buffer;
@@ -400,7 +416,7 @@ app.post("/api/download", async (req, res) => {
   }
 });
 
-// Download file endpoint - WITH UNIQUE FILENAMES
+// Download file endpoint - WITH UNIQUE FILENAMES AND PROPER CLEANUP
 app.get("/api/file/:id", async (req, res) => {
   const fileData = files.get(req.params.id);
 
@@ -460,24 +476,46 @@ app.get("/api/file/:id", async (req, res) => {
   // Send the buffer
   res.send(fileData.buffer);
   
-  // Clean up after sending
-  files.delete(req.params.id);
-  progressMap.delete(req.params.id);
-  console.log(`🧹 Cleaned up ${req.params.id} (${fileData.type})`);
+  // ✅ PROPER CLEANUP: Wait for finish event before deleting
+  res.on('finish', () => {
+    // File successfully sent to client - NOW it's safe to delete
+    files.delete(req.params.id);
+    progressMap.delete(req.params.id);
+    console.log(`✅ File sent and cleaned up: ${req.params.id} (${fileData.type})`);
+  });
+  
+  // ✅ Handle client disconnection
+  res.on('close', () => {
+    if (!res.writableEnded) {
+      // Client disconnected before download completed
+      files.delete(req.params.id);
+      progressMap.delete(req.params.id);
+      console.log(`⚠️ Client disconnected, cleaned up: ${req.params.id}`);
+    }
+  });
 });
 
-// Get progress
+// Get progress - WITH ERROR MESSAGE SUPPORT
 app.get("/api/progress/:id", (req, res) => {
   const progress = progressMap.get(req.params.id);
+  const fileData = files.get(req.params.id);
   
   if (progress === undefined) {
     return res.status(404).json({ error: "Progress not found" });
   }
   
+  // If it's an error, send error message
+  if (progress === -1 && fileData?.error) {
+    return res.json({ 
+      progress: -1, 
+      error: fileData.message || "This video cannot be downloaded"
+    });
+  }
+  
   res.json({ progress });
 });
 
-// Get file info
+// Get file info - WITH ERROR INFO
 app.get("/api/info/:id", (req, res) => {
   const fileData = files.get(req.params.id);
   
@@ -486,6 +524,8 @@ app.get("/api/info/:id", (req, res) => {
     type: fileData?.type || null,
     ext: fileData?.ext || null,
     platform: fileData?.platform || null,
+    error: fileData?.error || false,
+    message: fileData?.message || null,
     size: fileData?.buffer?.length || 0
   });
 });
@@ -496,7 +536,13 @@ app.listen(PORT, () => {
 
 // Debug - log ready state periodically
 setInterval(() => {
-  console.log(`📊 Status - Ready: ${ready}, Client: ${!!client}, Files: ${files.size}`);
+  let totalMB = 0;
+  for (const [_, fileData] of files) {
+    if (fileData && fileData.buffer) {
+      totalMB += fileData.buffer.length / (1024 * 1024);
+    }
+  }
+  console.log(`📊 Status - Ready: ${ready}, Client: ${!!client}, Files: ${files.size}, Total: ${totalMB.toFixed(2)} MB`);
 }, 30000);
 
 // Handle errors gracefully
