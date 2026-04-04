@@ -11,7 +11,8 @@ const normalizeApiBase = (rawUrl) => {
 
 const MODES = {
   MEDIA: "media",
-  MUSIC: "music"
+  MUSIC: "music",
+  INFO: "info"
 };
 
 const platformPatterns = [
@@ -126,13 +127,18 @@ export default function App() {
   const API = normalizeApiBase(import.meta.env.VITE_API_URL);
 
   useEffect(() => {
-    const nextTitle = mode === MODES.MEDIA
-      ? "Mega Downloader | Free Video & Image Downloader (No Login)"
-      : "Mega Downloader | Free Music Downloader by Song or Artist";
+    let nextTitle = "Mega Downloader | Free Video & Image Downloader (No Login)";
+    let nextDescription = "Download videos and images for free with no login on Mega Downloader.";
 
-    const nextDescription = mode === MODES.MEDIA
-      ? "Download videos and images for free with no login on Mega Downloader."
-      : "Search songs by title or artist name, then download music for free with no login.";
+    if (mode === MODES.MUSIC) {
+      nextTitle = "Mega Downloader | Free Music Downloader by Song or Artist";
+      nextDescription = "Search songs by title or artist name, then download music for free with no login.";
+    }
+
+    if (mode === MODES.INFO) {
+      nextTitle = "Mega Downloader | Why Use Mega Downloader";
+      nextDescription = "See why Mega Downloader is fast, free, no-login, and built for music, video, and image downloads.";
+    }
 
     document.title = nextTitle;
 
@@ -381,159 +387,176 @@ export default function App() {
 
     if (mode === MODES.MEDIA) {
       handleMediaDownload();
-    } else {
+    } else if (mode === MODES.MUSIC) {
       handleMusicSearch();
     }
   };
 
   return (
     <div className="wrapper">
-      <div className="contentStack">
-        <div className="card">
-          <div className="navbar" role="tablist" aria-label="Download modes">
-            <button
-              className={`navButton ${mode === MODES.MEDIA ? "active" : ""}`}
-              onClick={() => switchMode(MODES.MEDIA)}
-              type="button"
-            >
-              Video & Images
-            </button>
-            <button
-              className={`navButton ${mode === MODES.MUSIC ? "active" : ""}`}
-              onClick={() => switchMode(MODES.MUSIC)}
-              type="button"
-            >
-              Music
-            </button>
-          </div>
-
-          <h1 className="title">Mega Downloader</h1>
-
-          {mode === MODES.MEDIA ? (
-            <p className="subtitle">
-              Download <b>videos & images</b> from <b>YouTube, TikTok, Instagram, Pinterest, Facebook, Twitter/X</b> and more.
-            </p>
-          ) : (
-            <p className="subtitle">
-              Search any song by <b>title or singer name</b>, pick from the suggested results, and download it instantly with no login.
-            </p>
-          )}
-
-          {mode === MODES.MEDIA ? (
-            <>
-              <input
-                className="input"
-                type="url"
-                placeholder="Paste video or image URL here..."
-                value={url}
-                onChange={(event) => setUrl(event.target.value)}
-                onKeyDown={handleKeyDown}
-                disabled={loading || searchingMusic}
-              />
-              <button
-                className="button"
-                onClick={handleMediaDownload}
-                disabled={loading || searchingMusic}
-                type="button"
-              >
-                {loading ? "Please wait..." : "Download"}
-              </button>
-
-              <p className="note">Pinterest supports both images and videos.
-              <span><br />TikTok supports both regular and short links.</span>
-              </p>
-            </>
-          ) : (
-            <>
-              <input
-                className="input"
-                type="text"
-                placeholder="Type song or singer name..."
-                value={musicQuery}
-                onChange={(event) => setMusicQuery(event.target.value)}
-                onKeyDown={handleKeyDown}
-                disabled={loading || searchingMusic}
-              />
-              <button
-                className="button"
-                onClick={handleMusicSearch}
-                disabled={loading || searchingMusic}
-                type="button"
-              >
-                {searchingMusic ? "Searching..." : loading ? "Please wait..." : "Find Songs"}
-              </button>
-
-              {musicSuggestions.length > 0 && (
-                <div className="songListWrapper">
-                  <p className="songListTitle">Suggested songs</p>
-                  <div className="songList">
-                    {musicSuggestions.map((option) => (
-                      <button
-                        key={option.id}
-                        className={`songOption ${activeSongLabel === option.label ? "selected" : ""}`}
-                        type="button"
-                        onClick={() => handleMusicSelection(option)}
-                        disabled={loading || searchingMusic}
-                      >
-                        <span className="songOptionId">#{option.id}</span>
-                        <span className="songOptionLabel">{option.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-
-          {loading && (
-            <div className="progressContainer">
-              <div className="progressBarWrapper">
-                <div className="progressBarFill" style={{ width: `${progress}%` }}></div>
-              </div>
-              <span className="progressPercentage">{progress}%</span>
-            </div>
-          )}
-
-          {(loading || searchingMusic) && (
-            <div className="loaderWrapper">
-              <div className="spinner"></div>
-              <span className="loadingText">{status}</span>
-            </div>
-          )}
-
-          {!loading && !searchingMusic && <p className="status">{status}</p>}
+      <div className="card">
+        <div className="navbar" role="tablist" aria-label="Download modes">
+          <button
+            className={`navButton ${mode === MODES.MEDIA ? "active" : ""}`}
+            onClick={() => switchMode(MODES.MEDIA)}
+            type="button"
+          >
+            Video & Images
+          </button>
+          <button
+            className={`navButton ${mode === MODES.MUSIC ? "active" : ""}`}
+            onClick={() => switchMode(MODES.MUSIC)}
+            type="button"
+          >
+            Music
+          </button>
+          <button
+            className={`navButton ${mode === MODES.INFO ? "active" : ""}`}
+            onClick={() => switchMode(MODES.INFO)}
+            type="button"
+          >
+            About
+          </button>
         </div>
 
-        <section className="seoSections" aria-label="Mega Downloader details">
-          <article className="seoCard">
-            <h2>Why Mega Downloader</h2>
-            <p>
-              Mega Downloader gives you premium-style features without friction: free usage, no login,
-              instant song search, and quick download flow.
+        <h1 className="title">Mega Downloader</h1>
+
+        {mode === MODES.MEDIA && (
+          <p className="subtitle">
+            Download <b>videos & images</b> from <b>YouTube, TikTok, Instagram, Pinterest, Facebook, Twitter/X</b> and more.
+          </p>
+        )}
+
+        {mode === MODES.MUSIC && (
+          <p className="subtitle">
+            Search any song by <b>title or singer name</b>, pick from the suggested results, and download it instantly with no login.
+          </p>
+        )}
+
+        {mode === MODES.INFO && (
+          <p className="subtitle">
+            Learn what makes Mega Downloader clean, fast, and reliable for daily use.
+          </p>
+        )}
+
+        {mode === MODES.MEDIA && (
+          <>
+            <input
+              className="input"
+              type="url"
+              placeholder="Paste video or image URL here..."
+              value={url}
+              onChange={(event) => setUrl(event.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={loading || searchingMusic}
+            />
+            <button
+              className="button"
+              onClick={handleMediaDownload}
+              disabled={loading || searchingMusic}
+              type="button"
+            >
+              {loading ? "Please wait..." : "Download"}
+            </button>
+
+            <p className="note">Pinterest supports both images and videos.
+            <span><br />TikTok supports both regular and short links.</span>
             </p>
-            <ul className="seoList">
-              {BENEFIT_ITEMS.map((item) => (
-                <li key={item}>{item}</li>
+          </>
+        )}
+
+        {mode === MODES.MUSIC && (
+          <>
+            <input
+              className="input"
+              type="text"
+              placeholder="Type song or singer name..."
+              value={musicQuery}
+              onChange={(event) => setMusicQuery(event.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={loading || searchingMusic}
+            />
+            <button
+              className="button"
+              onClick={handleMusicSearch}
+              disabled={loading || searchingMusic}
+              type="button"
+            >
+              {searchingMusic ? "Searching..." : loading ? "Please wait..." : "Find Songs"}
+            </button>
+
+            {musicSuggestions.length > 0 && (
+              <div className="songListWrapper">
+                <p className="songListTitle">Suggested songs</p>
+                <div className="songList">
+                  {musicSuggestions.map((option) => (
+                    <button
+                      key={option.id}
+                      className={`songOption ${activeSongLabel === option.label ? "selected" : ""}`}
+                      type="button"
+                      onClick={() => handleMusicSelection(option)}
+                      disabled={loading || searchingMusic}
+                    >
+                      <span className="songOptionId">#{option.id}</span>
+                      <span className="songOptionLabel">{option.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {mode === MODES.INFO && (
+          <section className="seoSections" aria-label="Mega Downloader details">
+            <article className="seoCard">
+              <h2>Why Mega Downloader</h2>
+              <p>
+                Mega Downloader gives you premium-style features without friction: free usage, no login,
+                instant song search, and quick download flow.
+              </p>
+              <ul className="seoList">
+                {BENEFIT_ITEMS.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </article>
+
+            <article className="seoCard">
+              <h2>Supported Platforms</h2>
+              <p>Use one tool for multiple sources and switch between media and music modes instantly.</p>
+              <p className="platformLine">{SUPPORTED_PLATFORMS.join(" • ")}</p>
+            </article>
+
+            <article className="seoCard">
+              <h2>FAQ</h2>
+              {FAQ_ITEMS.map((faq) => (
+                <details className="faqItem" key={faq.question}>
+                  <summary>{faq.question}</summary>
+                  <p>{faq.answer}</p>
+                </details>
               ))}
-            </ul>
-          </article>
+            </article>
+          </section>
+        )}
 
-          <article className="seoCard">
-            <h2>Supported Platforms</h2>
-            <p>Use one tool for multiple sources and switch between media and music modes instantly.</p>
-            <p className="platformLine">{SUPPORTED_PLATFORMS.join(" • ")}</p>
-          </article>
+        {mode !== MODES.INFO && loading && (
+          <div className="progressContainer">
+            <div className="progressBarWrapper">
+              <div className="progressBarFill" style={{ width: `${progress}%` }}></div>
+            </div>
+            <span className="progressPercentage">{progress}%</span>
+          </div>
+        )}
 
-          <article className="seoCard">
-            <h2>FAQ</h2>
-            {FAQ_ITEMS.map((faq) => (
-              <details className="faqItem" key={faq.question}>
-                <summary>{faq.question}</summary>
-                <p>{faq.answer}</p>
-              </details>
-            ))}
-          </article>
-        </section>
+        {mode !== MODES.INFO && (loading || searchingMusic) && (
+          <div className="loaderWrapper">
+            <div className="spinner"></div>
+            <span className="loadingText">{status}</span>
+          </div>
+        )}
+
+        {mode !== MODES.INFO && !loading && !searchingMusic && <p className="status">{status}</p>}
       </div>
     </div>
   );

@@ -33,17 +33,9 @@ body {
   background: #000000;
 }
 
-.contentStack {
-  width: 100%;
-  max-width: 760px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
 .card {
   width: 100%;
-  max-width: 680px;
+  max-width: 760px;
   border: none;
   background: var(--bg-card);
   backdrop-filter: blur(6px);
@@ -57,7 +49,7 @@ body {
 
 .navbar {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 18px;
 }
@@ -274,9 +266,9 @@ body {
 
 .seoSections {
   width: 100%;
-  max-width: 680px;
   display: grid;
   gap: 12px;
+  margin-top: 4px;
 }
 
 .seoCard {
@@ -284,6 +276,7 @@ body {
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.02);
   padding: 16px;
+  text-align: left;
 }
 
 .seoCard h2 {
@@ -348,10 +341,6 @@ body {
 
   .card {
     padding: 18px;
-  }
-
-  .contentStack {
-    gap: 12px;
   }
 
   .navbar {

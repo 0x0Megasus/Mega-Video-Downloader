@@ -6,7 +6,6 @@
     }
   ],
   "env": {
-    "VITE_API_URL": "",
-    "VITE_SITE_URL": ""
+    "VITE_API_URL": ""
   }
 }

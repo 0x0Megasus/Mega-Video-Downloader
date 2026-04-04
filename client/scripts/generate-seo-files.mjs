@@ -8,38 +8,7 @@ const projectRoot = path.resolve(__dirname, "..");
 const publicDir = path.join(projectRoot, "public");
 const logoSourcePath = path.join(projectRoot, "src", "assets", "MVD-Logo.jpg");
 const logoTargetPath = path.join(publicDir, "og-image.jpg");
-
-const normalizeSiteUrl = (rawValue) => {
-  const value = String(rawValue || "").trim();
-  if (!value) return "";
-
-  const withProtocol = /^https?:\/\//i.test(value) ? value : `https://${value}`;
-
-  try {
-    const parsed = new URL(withProtocol);
-    return parsed.origin;
-  } catch {
-    return "";
-  }
-};
-
-const resolveSiteUrl = () => {
-  const candidates = [
-    process.env.VITE_SITE_URL,
-    process.env.SITE_URL,
-    process.env.VERCEL_PROJECT_PRODUCTION_URL,
-    process.env.VERCEL_URL
-  ];
-
-  for (const candidate of candidates) {
-    const normalized = normalizeSiteUrl(candidate);
-    if (normalized) return normalized;
-  }
-
-  return "https://your-domain.com";
-};
-
-const siteUrl = resolveSiteUrl();
+const siteUrl = "https://mega-video-downloader.vercel.app";
 const pagePaths = ["/"];
 const now = new Date().toISOString();
 
