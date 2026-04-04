@@ -1,154 +1,208 @@
-/* App.css */
-
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
+:root {
+  --bg-main: #000000;
+  --bg-card: rgba(255, 255, 255, 0.03);
+  --bg-soft: rgba(255, 255, 255, 0.05);
+  --border: #2a2a2a;
+  --text-main: #cccccc;
+  --text-muted: #a6a6a6;
+  --accent: #cccccc;
+  --accent-dark: #0a0a0a;
+  --success: #8dd5a5;
+  --danger: #f6a7a7;
+}
+
+body {
+  font-family: "Saira", sans-serif;
+  background: var(--bg-main);
+  color: var(--text-main);
+}
+
 .wrapper {
-  height: 100vh;
-  background: #0a0a0a;
-  display: flex;
-  justify-content: center;
-  align-items: center;
+  min-height: 100vh;
   padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000000;
 }
 
 .card {
   width: 100%;
-  max-width: 500px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid #222;
-  border-radius: 2px;
-  padding: 25px;
+  max-width: 680px;
+  height: 400px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  backdrop-filter: blur(6px);
+  border-radius: 12px;
+  padding: 24px;
   text-align: center;
-  color: #fff;
-  font-family: 'Saira', sans-serif;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.navbar {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.navButton {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.navButton:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #000000;
+}
+
+.navButton.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-dark);
 }
 
 .title {
-  font-size: 24px;
+  font-size: clamp(26px, 4vw, 34px);
+  font-weight: 700;
   margin-bottom: 10px;
-  font-weight: 600;
+  line-height: 1.2;
 }
 
 .subtitle {
-  font-size: 13px;
-  color: #aaa;
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1.6;
   margin-bottom: 20px;
-  line-height: 1.5;
 }
 
 .input {
-  width: 85%;
-  padding: 12px;
-  border-radius: 2px;
-  border: 1px solid #444;
-  background: transparent;
-  color: #fff;
-  margin-bottom: 10px;
+  width: 100%;
+  border: 1px solid #404040;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text-main);
+  padding: 14px;
+  font-size: 15px;
   outline: none;
-  font-size: 14px;
+  transition: border-color 0.2s ease;
 }
 
 .input:focus {
-  border-color: #fff;
+  border-color: var(--accent);
 }
 
 .button {
-  width: 50%;
+  width: 100%;
+  margin-top: 12px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--accent-dark);
   padding: 12px;
-  margin-top: 8px;
-  border-radius: 2px;
-  border: 1px solid #fff;
-  background: #fff;
-  color: #000;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
   cursor: pointer;
-  font-size: 14px;
   transition: all 0.2s ease;
 }
 
 .button:hover:not(:disabled) {
-  background-color: #606060;
-  border-color: #606060;
+  background: transparent;
+  color: var(--accent);
 }
 
-.button:active:not(:disabled) {
-  background-color: #b9b9b9;
-  border-color: #b9b9b9;
-}
-
-.button:disabled {
-  opacity: 0.5;
+.button:disabled,
+.songOption:disabled,
+.navButton:disabled {
   cursor: not-allowed;
-}
-
-.loaderWrapper {
-  margin-top: 20px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
-
-.spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid #333;
-  border-top: 3px solid #fff;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-.loadingText {
-  font-size: 12px;
-  color: #aaa;
-}
-
-.status {
-  margin-top: 15px;
-  font-size: 13px;
-  color: #c78f3a;
-  min-height: 20px;
+  opacity: 0.55;
 }
 
 .note {
-  font-size: 16px;
-  color: #aa5252;
-  margin-top: 2px;
-  font-style: italic;
+  margin-top: 20px;
+  font-size: 13px;
+  color: #bf8f8f;
 }
 
-/* Responsive */
-@media (max-width: 480px) {
-  .card {
-    padding: 20px;
-  }
-  
-  .input {
-    width: 100%;
-  }
-  
-  .button {
-    width: 100%;
-  }
-  
-  .title {
-    font-size: 20px;
-  }
+.songListWrapper {
+  margin-top: 16px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--bg-soft);
 }
 
-/* Add these to your existing App.css */
+.songListTitle {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.songList {
+  display: grid;
+  gap: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.songOption {
+  width: 100%;
+  border: 1px solid #333333;
+  border-radius: 8px;
+  background: #101010;
+  color: var(--text-main);
+  padding: 10px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.songOption:hover:not(:disabled) {
+  border-color: #666666;
+  transform: translateY(-1px);
+}
+
+.songOption.selected {
+  border-color: var(--accent);
+  background: #1b1b1b;
+}
+
+.songOptionId {
+  color: var(--text-muted);
+  min-width: 26px;
+  font-weight: 700;
+}
+
+.songOptionLabel {
+  flex: 1;
+  line-height: 1.35;
+  word-break: break-word;
+}
 
 .progressContainer {
-  margin: 20px 0 10px;
+  margin-top: 16px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -157,74 +211,100 @@
 .progressBarWrapper {
   flex: 1;
   height: 8px;
-  background: #222;
-  border-radius: 4px;
+  border-radius: 999px;
+  background: #242424;
   overflow: hidden;
 }
 
 .progressBarFill {
   height: 100%;
-  background: linear-gradient(90deg, #fff, #ccc);
-  transition: width 0.3s ease;
-  border-radius: 4px;
+  width: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.25s ease;
 }
 
 .progressPercentage {
-  font-size: 14px;
-  font-weight: 600;
-  color: #fff;
-  min-width: 45px;
+  min-width: 42px;
   text-align: right;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-main);
 }
 
-/* Update existing button style */
-.button {
-  width: 50%;
-  padding: 12px;
-  border-radius: 2px;
-  border: 1px solid #fff;
-  background: #fff;
-  color: #000;
-  font-weight: 600;
-  cursor: pointer;
-  font-size: 14px;
-  transition: all 0.2s ease;
-  margin-bottom: 10px;
-}
-
-.button:hover:not(:disabled) {
-  background: transparent;
-  color: #fff;
-}
-
-.button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  background: #666;
-  border-color: #666;
-}
-
-/* Update loaderWrapper */
 .loaderWrapper {
-  margin-top: 10px;
+  margin-top: 12px;
   display: flex;
-  flex-direction: column;
+  gap: 10px;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
 }
 
-/* Responsive */
-@media (max-width: 480px) {
-  .button {
-    width: 100%;
+.spinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid #333;
+  border-top: 2px solid var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.loadingText {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.status {
+  margin-top: auto;
+  padding-top: 14px;
+  min-height: 20px;
+  font-size: 13px;
+  color: var(--success);
+  line-height: 1.4;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
   }
-  
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 640px) {
+  .wrapper {
+    padding: 12px;
+  }
+
+  .card {
+    padding: 18px;
+    height: calc(100vh - 24px);
+  }
+
+  .navbar {
+    gap: 8px;
+  }
+
+  .navButton {
+    font-size: 13px;
+    padding: 10px;
+  }
+
+  .subtitle {
+    font-size: 13px;
+  }
+
+  .songList {
+    max-height: 200px;
+  }
+
   .progressContainer {
     flex-direction: column;
     align-items: stretch;
-    gap: 5px;
+    gap: 6px;
   }
-  
+
   .progressPercentage {
     text-align: center;
   }

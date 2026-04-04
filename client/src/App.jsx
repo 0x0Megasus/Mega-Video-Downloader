@@ -1,39 +1,64 @@
 import { useState } from "react";
 import "./App.css";
 
+const normalizeApiBase = (rawUrl) => {
+  const value = (rawUrl || "").trim();
+  if (!value) return "http://localhost:5000";
+
+  const withProtocol = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+  return withProtocol.replace(/\/+$/, "");
+};
+
+const MODES = {
+  MEDIA: "media",
+  MUSIC: "music"
+};
+
+const platformPatterns = [
+  { name: "YouTube", pattern: /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+$/ },
+  { name: "TikTok", pattern: /^(https?:\/\/)?(www\.)?(tiktok\.com|vm\.tiktok\.com|vt\.tiktok\.com)\/.+$/ },
+  { name: "Instagram", pattern: /^(https?:\/\/)?(www\.)?(instagram\.com)\/.+$/ },
+  { name: "Facebook", pattern: /^(https?:\/\/)?(www\.)?(facebook\.com|fb\.watch)\/.+$/ },
+  { name: "Pinterest", pattern: /^(https?:\/\/)?(www\.)?(pin\.it|pinterest\.com|pinterest\.ca|pinterest\.co\.uk|pinterest\.ph|pinterest\.fr|pinterest\.de)\/.+$/ },
+  { name: "Twitter/X", pattern: /^(https?:\/\/)?(www\.)?(twitter\.com|x\.com)\/.+$/ },
+  { name: "Reddit", pattern: /^(https?:\/\/)?(www\.)?(reddit\.com)\/.+$/ },
+  { name: "Vimeo", pattern: /^(https?:\/\/)?(www\.)?(vimeo\.com)\/.+$/ },
+  { name: "Dailymotion", pattern: /^(https?:\/\/)?(www\.)?(dailymotion\.com)\/.+$/ }
+];
+
+const parseErrorMessage = async (response) => {
+  const fallback = "Server error";
+  const contentType = response.headers.get("content-type") || "";
+
+  if (contentType.includes("application/json")) {
+    const data = await response.json();
+    return data?.error || fallback;
+  }
+
+  const text = await response.text();
+  return text || fallback;
+};
+
 export default function App() {
+  const [mode, setMode] = useState(MODES.MEDIA);
   const [url, setUrl] = useState("");
+  const [musicQuery, setMusicQuery] = useState("");
+  const [musicSessionId, setMusicSessionId] = useState("");
+  const [musicSuggestions, setMusicSuggestions] = useState([]);
+  const [activeSongLabel, setActiveSongLabel] = useState("");
   const [status, setStatus] = useState("");
   const [progress, setProgress] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [platform, setPlatform] = useState("");
+  const [searchingMusic, setSearchingMusic] = useState(false);
 
-  const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
-  // Platform patterns
-  const platformPatterns = [
-    { name: "YouTube", pattern: /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+$/ },
-    { name: "TikTok", pattern: /^(https?:\/\/)?(www\.)?(tiktok\.com|vm\.tiktok\.com)\/.+$/ },
-    { name: "Instagram", pattern: /^(https?:\/\/)?(www\.)?(instagram\.com)\/.+$/ },
-    { name: "Facebook", pattern: /^(https?:\/\/)?(www\.)?(facebook\.com|fb\.watch)\/.+$/ },
-    { name: "Pinterest", pattern: /^(https?:\/\/)?(www\.)?(pin\.it|pinterest\.com|pinterest\.ca|pinterest\.co\.uk|pinterest\.ph|pinterest\.fr|pinterest\.de)\/.+$/ },
-    { name: "Twitter/X", pattern: /^(https?:\/\/)?(www\.)?(twitter\.com|x\.com)\/.+$/ },
-    { name: "Reddit", pattern: /^(https?:\/\/)?(www\.)?(reddit\.com)\/.+$/ },
-    { name: "Vimeo", pattern: /^(https?:\/\/)?(www\.)?(vimeo\.com)\/.+$/ },
-    { name: "Dailymotion", pattern: /^(https?:\/\/)?(www\.)?(dailymotion\.com)\/.+$/ }
-  ];
+  const API = normalizeApiBase(import.meta.env.VITE_API_URL);
 
-  const resetUI = () => {
-    setUrl("");
-    setStatus("");
-    setProgress(0);
-    setLoading(false);
-    setPlatform("");
-  };
+  const validateUrl = (inputValue) => {
+    const cleanUrl = (inputValue || "").trim();
 
-  const validateUrl = (url) => {
-    if (!url) return { valid: false, message: "URL is required" };
-
-    const cleanUrl = url.trim();
+    if (!cleanUrl) {
+      return { valid: false, message: "URL is required" };
+    }
 
     try {
       new URL(cleanUrl);
@@ -50,145 +75,319 @@ export default function App() {
     return { valid: false, message: "URL not from a supported platform" };
   };
 
-  const download = async () => {
-    const validation = validateUrl(url);
-    
-    if (!validation.valid) {
-      setStatus(validation.message + " ❌");
-      return;
-    }
+  const startProgressPolling = (id, completeMessage = "Download complete! Starting download...") => {
+    let finished = false;
 
-    setPlatform(validation.platform);
-    setStatus(`Processing ${validation.platform}...`);
     setLoading(true);
     setProgress(0);
 
+    const interval = setInterval(async () => {
+      if (finished) return;
+
+      try {
+        const response = await fetch(`${API}/api/progress/${id}`);
+        if (!response.ok) return;
+
+        const payload = await response.json();
+        const currentProgress = payload?.progress;
+
+        if (typeof currentProgress !== "number") return;
+
+        setProgress(Math.max(0, currentProgress));
+
+        if (currentProgress === -1) {
+          finished = true;
+          clearInterval(interval);
+          clearTimeout(timeout);
+          setLoading(false);
+          setStatus(payload?.error || "Download failed ❌");
+          return;
+        }
+
+        if (currentProgress >= 100) {
+          finished = true;
+          clearInterval(interval);
+          clearTimeout(timeout);
+          setLoading(false);
+          setStatus(completeMessage);
+
+          setTimeout(() => {
+            window.location.href = `${API}/api/file/${id}`;
+          }, 400);
+
+          return;
+        }
+
+        setStatus(`Downloading: ${currentProgress}%`);
+      } catch {
+        // Ignore transient polling errors.
+      }
+    }, 500);
+
+    const timeout = setTimeout(() => {
+      if (finished) return;
+      finished = true;
+      clearInterval(interval);
+      setLoading(false);
+      setStatus("Download timed out ❌");
+    }, 150000);
+  };
+
+  const handleMediaDownload = async () => {
+    if (loading || searchingMusic) return;
+
+    const validation = validateUrl(url);
+    if (!validation.valid) {
+      setStatus(`${validation.message} ❌`);
+      return;
+    }
+
+    setStatus(`Processing ${validation.platform}...`);
+    setProgress(0);
+
     try {
-      // Start download
-      const res = await fetch(`${API}/api/download`, {
+      const response = await fetch(`${API}/api/download`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: url.trim() })
       });
 
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || "Server error");
+      if (!response.ok) {
+        throw new Error(await parseErrorMessage(response));
       }
 
-      const data = await res.json();
-      const id = data.id;
+      const payload = await response.json();
+      if (!payload?.id) {
+        throw new Error("Invalid response from server");
+      }
 
-      // Poll for progress
-      const interval = setInterval(async () => {
-        try {
-          const progressRes = await fetch(`${API}/api/progress/${id}`);
-          
-          if (progressRes.ok) {
-            const progressData = await progressRes.json();
-            const currentProgress = progressData.progress;
-            
-            setProgress(currentProgress);
-            
-            if (currentProgress === -1) {
-              clearInterval(interval);
-              // Show the actual error message from bot
-              const errorMsg = progressData.error || "Download failed";
-              setStatus(`${errorMsg} ❌`);
-              setLoading(false);
-            } 
-            else if (currentProgress >= 100) {
-              clearInterval(interval);
-              setStatus("Download complete! Starting download...");
-              
-              // Small delay to ensure file is ready
-              setTimeout(() => {
-                window.location.href = `${API}/api/file/${id}`;
-                // Reset UI after download starts
-                setTimeout(resetUI, 3000);
-              }, 500);
-            }
-            else {
-              setStatus(`Downloading: ${currentProgress}%`);
-            }
-          } else {
-            console.log("Progress check failed:", progressRes.status);
-          }
-        } catch (error) {
-          console.log("Progress check error:", error);
-        }
-      }, 500);
-
-      // Clean up interval after 2 minutes (timeout)
-      setTimeout(() => {
-        clearInterval(interval);
-        if (loading) {
-          setStatus("Download timed out ❌");
-          setLoading(false);
-        }
-      }, 120000);
-
+      startProgressPolling(payload.id);
     } catch (error) {
-      setStatus(error.message || "Server error ❌");
+      setStatus(`${error.message || "Server error"} ❌`);
       setLoading(false);
     }
   };
 
-  const handleKeyPress = (e) => {
-    if (e.key === "Enter" && !loading) {
-      download();
+  const handleMusicSearch = async () => {
+    if (loading || searchingMusic) return;
+
+    const query = musicQuery.trim();
+    if (!query) {
+      setStatus("Song name or singer name is required ❌");
+      return;
+    }
+
+    setSearchingMusic(true);
+    setStatus("Searching songs...");
+    setMusicSuggestions([]);
+    setMusicSessionId("");
+    setActiveSongLabel("");
+
+    try {
+      const response = await fetch(`${API}/api/music/search`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query })
+      });
+
+      if (!response.ok) {
+        throw new Error(await parseErrorMessage(response));
+      }
+
+      const payload = await response.json();
+      const suggestions = Array.isArray(payload?.suggestions) ? payload.suggestions : [];
+
+      if (!payload?.sessionId || suggestions.length === 0) {
+        throw new Error("No songs were found. Try another name.");
+      }
+
+      setMusicSessionId(payload.sessionId);
+      setMusicSuggestions(suggestions);
+      setStatus(`Found ${suggestions.length} songs. Select one to download.`);
+    } catch (error) {
+      setStatus(`${error.message || "Music search failed"} ❌`);
+    } finally {
+      setSearchingMusic(false);
+    }
+  };
+
+  const handleMusicSelection = async (option) => {
+    if (!option || loading || searchingMusic) return;
+
+    if (!musicSessionId) {
+      setStatus("Search for songs first ❌");
+      return;
+    }
+
+    setActiveSongLabel(option.label);
+    setStatus(`Preparing "${option.label}"...`);
+    setProgress(0);
+
+    try {
+      const response = await fetch(`${API}/api/music/download`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: musicSessionId,
+          optionId: option.id
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(await parseErrorMessage(response));
+      }
+
+      const payload = await response.json();
+      if (!payload?.id) {
+        throw new Error("Invalid server response");
+      }
+
+      setMusicSessionId("");
+      setMusicSuggestions([]);
+      startProgressPolling(payload.id, `Song ready! Starting download for "${option.label}"...`);
+    } catch (error) {
+      setStatus(`${error.message || "Song download failed"} ❌`);
+      setLoading(false);
+    }
+  };
+
+  const switchMode = (nextMode) => {
+    if (loading || searchingMusic) return;
+
+    setMode(nextMode);
+    setStatus("");
+    setProgress(0);
+
+    if (nextMode === MODES.MEDIA) {
+      setActiveSongLabel("");
+    }
+  };
+
+  const handleKeyDown = (event) => {
+    if (event.key !== "Enter") return;
+
+    if (mode === MODES.MEDIA) {
+      handleMediaDownload();
+    } else {
+      handleMusicSearch();
     }
   };
 
   return (
     <div className="wrapper">
       <div className="card">
-        <h1 className="title">Mega Video Downloader</h1>
-        <p className="subtitle">
-          Download <b>videos & images</b> from <b>YouTube, TikTok, Instagram, Pinterest, Facebook, Twitter(X)</b> and more
-        </p>
+        <div className="navbar" role="tablist" aria-label="Download modes">
+          <button
+            className={`navButton ${mode === MODES.MEDIA ? "active" : ""}`}
+            onClick={() => switchMode(MODES.MEDIA)}
+            type="button"
+          >
+            Video & Images
+          </button>
+          <button
+            className={`navButton ${mode === MODES.MUSIC ? "active" : ""}`}
+            onClick={() => switchMode(MODES.MUSIC)}
+            type="button"
+          >
+            Music
+          </button>
+        </div>
 
-        <input
-          className="input"
-          type="url"
-          placeholder="Paste Video URL Here..."
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          onKeyPress={handleKeyPress}
-          disabled={loading}
-        />
+        <h1 className="title">Mega Downloader</h1>
 
-        <button
-          className="button"
-          onClick={download}
-          disabled={loading}
-        >
-          {loading ? `Downloading ${progress}%` : "Download"}
-        </button>
+        {mode === MODES.MEDIA ? (
+          <p className="subtitle">
+            Download <b>videos & images</b> from <b>YouTube, TikTok, Instagram, Pinterest, Facebook, Twitter/X</b> and more.
+          </p>
+        ) : (
+          <p className="subtitle">
+            Search any song by <b>title or singer name</b>, pick from the suggested results, and download it instantly with no login.
+          </p>
+        )}
 
-        {/* Progress Bar */}
-        {loading && (
+        {mode === MODES.MEDIA ? (
+          <>
+            <input
+              className="input"
+              type="url"
+              placeholder="Paste video or image URL here..."
+              value={url}
+              onChange={(event) => setUrl(event.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={loading || searchingMusic}
+            />
+            <button
+              className="button"
+              onClick={handleMediaDownload}
+              disabled={loading || searchingMusic}
+              type="button"
+            >
+              {loading ? `Downloading ${progress}%` : "Download"}
+            </button>
+
+            <p className="note">Pinterest supports both images and videos.
+            <span><br />TikTok supports both regular and short links.</span>
+            </p>
+          </>
+        ) : (
+          <>
+            <input
+              className="input"
+              type="text"
+              placeholder="Type song or singer name..."
+              value={musicQuery}
+              onChange={(event) => setMusicQuery(event.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={loading || searchingMusic}
+            />
+            <button
+              className="button"
+              onClick={handleMusicSearch}
+              disabled={loading || searchingMusic}
+              type="button"
+            >
+              {searchingMusic ? "Searching..." : "Find Songs"}
+            </button>
+
+            {musicSuggestions.length > 0 && (
+              <div className="songListWrapper">
+                <p className="songListTitle">Suggested songs</p>
+                <div className="songList">
+                  {musicSuggestions.map((option) => (
+                    <button
+                      key={option.id}
+                      className={`songOption ${activeSongLabel === option.label ? "selected" : ""}`}
+                      type="button"
+                      onClick={() => handleMusicSelection(option)}
+                      disabled={loading || searchingMusic}
+                    >
+                      <span className="songOptionId">#{option.id}</span>
+                      <span className="songOptionLabel">{option.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {(loading || searchingMusic) && (
           <div className="progressContainer">
             <div className="progressBarWrapper">
-              <div 
-                className="progressBarFill" 
-                style={{ width: `${progress}%` }}
-              ></div>
+              <div className="progressBarFill" style={{ width: `${progress}%` }}></div>
             </div>
             <span className="progressPercentage">{progress}%</span>
           </div>
         )}
 
-        {loading && (
+        {(loading || searchingMusic) && (
           <div className="loaderWrapper">
             <div className="spinner"></div>
             <span className="loadingText">{status}</span>
           </div>
         )}
 
-        {!loading && <p className="status">{status}</p>}
-        <p className="note">📷 Pinterest: Supports both images and videos</p>
-        <p className="note">🎥 TikTok: Supports both regular and short links (vm.tiktok.com)</p>
+        {!loading && !searchingMusic && <p className="status">{status}</p>}
       </div>
     </div>
   );
