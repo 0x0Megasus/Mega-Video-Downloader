@@ -234,6 +234,66 @@ const parseMusicOptionsFromText = (text = "") => {
   return options;
 };
 
+const normalizeMusicOptionLabel = (label = "") => {
+  return sanitizeLabel(label)
+    .replace(/^#?\d+[.)-]?\s*/u, "")
+    .replace(/^[^\p{L}\p{N}]+/gu, "")
+    .trim();
+};
+
+const SYSTEM_MUSIC_BUTTON_PATTERNS = [
+  /^create your own bot$/i,
+  /^add to group$/i,
+  /^\+?\s*add to group$/i,
+  /^\+?\s*more tracks$/i,
+  /^more tracks$/i,
+  /^search$/i,
+  /^open app$/i,
+  /^start$/i,
+  /^help$/i,
+  /^settings$/i,
+  /^about$/i,
+  /^support$/i,
+  /^feedback$/i,
+  /^privacy$/i,
+  /^terms$/i,
+  /^next$/i,
+  /^previous$/i,
+  /^prev$/i,
+  /^back$/i,
+  /^menu$/i
+];
+
+const isSystemMusicButton = (label = "") => {
+  const clean = normalizeMusicOptionLabel(label);
+  if (!clean) return true;
+  if (!/[\p{L}\p{N}]/u.test(clean)) return true;
+  return SYSTEM_MUSIC_BUTTON_PATTERNS.some((pattern) => pattern.test(clean));
+};
+
+const filterMusicOptions = (options = [], query = "") => {
+  const queryTokens = sanitizeLabel(query)
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((token) => token.length >= 2);
+
+  return options.filter((option) => {
+    const label = normalizeMusicOptionLabel(option?.label || "");
+    if (!label || isSystemMusicButton(label)) return false;
+
+    const lower = label.toLowerCase();
+    if (/@\w+bot\b/.test(lower)) return false;
+    if (/\b(add to group|more tracks|next|previous|prev|back)\b/i.test(lower)) return false;
+
+    if (/\bbot\b/.test(lower) && queryTokens.length > 0) {
+      const includesQuery = queryTokens.some((token) => lower.includes(token));
+      if (!includesQuery) return false;
+    }
+
+    return true;
+  });
+};
+
 const serializeMusicOptions = (options = []) => {
   return options.map((option, index) => ({
     id: String(index + 1),
@@ -609,9 +669,24 @@ app.post("/api/music/search", async (req, res) => {
 
         const buttonOptions = flattenReplyButtons(msg);
         const textOptions = parseMusicOptionsFromText(msg.message || "");
-        const options = buttonOptions.length > 0 ? buttonOptions : textOptions;
+        const rawOptions = buttonOptions.length > 0 ? buttonOptions : textOptions;
+        const options = filterMusicOptions(rawOptions, query);
 
         if (options.length === 0) {
+          const setupButtonFound = rawOptions.some((option) =>
+            isSystemMusicButton(option?.label || "")
+          );
+
+          if (setupButtonFound) {
+            completeOnce(() => {
+              client.removeEventHandler(handler);
+              res.status(502).json({
+                error: "Music bot sent setup buttons instead of songs. Please verify BOT_USERNAME points to your music search bot."
+              });
+            });
+            return;
+          }
+
           if (/not found|no results|error|invalid/i.test(text)) {
             completeOnce(() => {
               client.removeEventHandler(handler);

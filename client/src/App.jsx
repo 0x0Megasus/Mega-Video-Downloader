@@ -39,6 +39,27 @@ const parseErrorMessage = async (response) => {
   return text || fallback;
 };
 
+const isControlSongSuggestion = (label = "") => {
+  const value = (label || "")
+    .replace(/^#?\d+[.)-]?\s*/u, "")
+    .replace(/^[^\p{L}\p{N}]+/gu, "")
+    .trim()
+    .toLowerCase();
+
+  if (!value) return true;
+  if (!/[\p{L}\p{N}]/u.test(value)) return true;
+  if (/(^|\s)(more tracks|add to group|next|previous|prev|back|menu|start|help)($|\s)/i.test(value)) return true;
+
+  return false;
+};
+
+const getDownloadPhaseStatus = (progress, itemLabel = "file") => {
+  if (progress < 10) return `Connecting to source for your ${itemLabel}...`;
+  if (progress < 40) return `Fetching your ${itemLabel}...`;
+  if (progress < 85) return `Preparing your ${itemLabel}...`;
+  return `Finalizing your ${itemLabel}...`;
+};
+
 export default function App() {
   const [mode, setMode] = useState(MODES.MEDIA);
   const [url, setUrl] = useState("");
@@ -75,11 +96,19 @@ export default function App() {
     return { valid: false, message: "URL not from a supported platform" };
   };
 
-  const startProgressPolling = (id, completeMessage = "Download complete! Starting download...") => {
+  const startProgressPolling = (
+    id,
+    {
+      itemLabel = "file",
+      startMessage = "Request accepted. Preparing your file...",
+      completeMessage = "Download complete! Starting download..."
+    } = {}
+  ) => {
     let finished = false;
 
     setLoading(true);
     setProgress(0);
+    setStatus(startMessage);
 
     const interval = setInterval(async () => {
       if (finished) return;
@@ -118,7 +147,7 @@ export default function App() {
           return;
         }
 
-        setStatus(`Downloading: ${currentProgress}%`);
+        setStatus(getDownloadPhaseStatus(currentProgress, itemLabel));
       } catch {
         // Ignore transient polling errors.
       }
@@ -142,7 +171,7 @@ export default function App() {
       return;
     }
 
-    setStatus(`Processing ${validation.platform}...`);
+    setStatus(`Sending ${validation.platform} link...`);
     setProgress(0);
 
     try {
@@ -161,7 +190,11 @@ export default function App() {
         throw new Error("Invalid response from server");
       }
 
-      startProgressPolling(payload.id);
+      startProgressPolling(payload.id, {
+        itemLabel: "media file",
+        startMessage: "Source accepted. Preparing your media file...",
+        completeMessage: "Media ready! Starting download..."
+      });
     } catch (error) {
       setStatus(`${error.message || "Server error"} ❌`);
       setLoading(false);
@@ -195,7 +228,9 @@ export default function App() {
       }
 
       const payload = await response.json();
-      const suggestions = Array.isArray(payload?.suggestions) ? payload.suggestions : [];
+      const suggestions = Array.isArray(payload?.suggestions)
+        ? payload.suggestions.filter((option) => !isControlSongSuggestion(option?.label))
+        : [];
 
       if (!payload?.sessionId || suggestions.length === 0) {
         throw new Error("No songs were found. Try another name.");
@@ -220,7 +255,8 @@ export default function App() {
     }
 
     setActiveSongLabel(option.label);
-    setStatus(`Preparing "${option.label}"...`);
+    setMusicQuery("");
+    setStatus(`"${option.label}" selected. Requesting audio file...`);
     setProgress(0);
 
     try {
@@ -244,7 +280,11 @@ export default function App() {
 
       setMusicSessionId("");
       setMusicSuggestions([]);
-      startProgressPolling(payload.id, `Song ready! Starting download for "${option.label}"...`);
+      startProgressPolling(payload.id, {
+        itemLabel: "song",
+        startMessage: "Song found. Preparing audio file...",
+        completeMessage: `Song ready! Starting download for "${option.label}"...`
+      });
     } catch (error) {
       setStatus(`${error.message || "Song download failed"} ❌`);
       setLoading(false);
@@ -322,7 +362,7 @@ export default function App() {
               disabled={loading || searchingMusic}
               type="button"
             >
-              {loading ? `Downloading ${progress}%` : "Download"}
+              {loading ? "Please wait..." : "Download"}
             </button>
 
             <p className="note">Pinterest supports both images and videos.
@@ -346,7 +386,7 @@ export default function App() {
               disabled={loading || searchingMusic}
               type="button"
             >
-              {searchingMusic ? "Searching..." : "Find Songs"}
+              {searchingMusic ? "Searching..." : loading ? "Please wait..." : "Find Songs"}
             </button>
 
             {musicSuggestions.length > 0 && (
@@ -371,7 +411,7 @@ export default function App() {
           </>
         )}
 
-        {(loading || searchingMusic) && (
+        {loading && (
           <div className="progressContainer">
             <div className="progressBarWrapper">
               <div className="progressBarFill" style={{ width: `${progress}%` }}></div>
