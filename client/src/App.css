@@ -21,21 +21,29 @@ body {
   font-family: "Saira", sans-serif;
   background: var(--bg-main);
   color: var(--text-main);
+  line-height: 1.5;
 }
 
 .wrapper {
   min-height: 100vh;
   padding: 20px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   background: #000000;
+}
+
+.contentStack {
+  width: 100%;
+  max-width: 760px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .card {
   width: 100%;
   max-width: 680px;
-  height: min(640px, calc(100vh - 40px));
   border: none;
   background: var(--bg-card);
   backdrop-filter: blur(6px);
@@ -147,10 +155,8 @@ body {
   border-radius: 10px;
   padding: 12px;
   background: var(--bg-soft);
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
+  max-height: 280px;
+  overflow: hidden;
 }
 
 .songListTitle {
@@ -164,9 +170,7 @@ body {
 .songList {
   display: grid;
   gap: 8px;
-  flex: 1;
-  min-height: 0;
-  max-height: none;
+  max-height: 228px;
   overflow-y: auto;
 }
 
@@ -268,6 +272,66 @@ body {
   line-height: 1.4;
 }
 
+.seoSections {
+  width: 100%;
+  max-width: 680px;
+  display: grid;
+  gap: 12px;
+}
+
+.seoCard {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 16px;
+}
+
+.seoCard h2 {
+  font-size: 18px;
+  margin-bottom: 8px;
+}
+
+.seoCard p {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.seoList {
+  margin-top: 10px;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+}
+
+.seoList li {
+  color: var(--text-main);
+  font-size: 14px;
+}
+
+.platformLine {
+  margin-top: 10px;
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.faqItem {
+  border-top: 1px solid #242424;
+  padding-top: 10px;
+  margin-top: 10px;
+}
+
+.faqItem summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.faqItem p {
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
 @keyframes spin {
   from {
     transform: rotate(0deg);
@@ -284,7 +348,10 @@ body {
 
   .card {
     padding: 18px;
-    height: min(640px, calc(100vh - 24px));
+  }
+
+  .contentStack {
+    gap: 12px;
   }
 
   .navbar {
@@ -308,5 +375,9 @@ body {
 
   .progressPercentage {
     text-align: center;
+  }
+
+  .seoCard h2 {
+    font-size: 16px;
   }
 }

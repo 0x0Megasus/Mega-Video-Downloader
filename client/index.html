@@ -2,42 +2,135 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <link rel="icon" href="./src/assets/MVD-Logo.jpg"/>
-  <title>Mega Downloader | Video, Image & Music Downloader</title>
-  <!-- SEO meta -->
-  <meta name="description" content="Mega Downloader lets you download videos, images, and music for free with no login. Search songs by title or singer name, choose from suggestions, and download fast." />
-  <meta name="keywords" content="music downloader, song downloader by name, singer name song download, video downloader, image downloader, pinterest downloader, youtube downloader, instagram downloader, tiktok downloader, free no login downloader" />
-  <!-- Open Graph / Social Media -->
-  <meta property="og:title" content="Mega Downloader - Download Video, Images & Music" />
-  <meta property="og:description" content="Download videos and images from major platforms, or search songs by title/singer name and download instantly. Free and no login required." />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mega Downloader | Free Video, Image and Music Downloader (No Login)</title>
+  <meta name="description" content="Mega Downloader is a free no-login downloader for videos, images and music. Download from top platforms and search songs by title or artist in seconds." />
+  <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="site-url" content="" />
+  <link rel="canonical" href="https://example.com/" />
+  <link rel="manifest" href="/site.webmanifest" />
+  <link rel="icon" href="/og-image.jpg" />
+  <link rel="apple-touch-icon" href="/og-image.jpg" />
+
   <meta property="og:type" content="website" />
-  <!-- Twitter Card -->
-  <meta name="twitter:card" content="summary" />
-  <meta name="twitter:title" content="Mega Downloader" />
-  <meta name="twitter:description" content="Free no-login downloader for videos, images, and music. Find songs by name or singer and download quickly." />
-  <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "WebApplication",
-      "name": "Mega Downloader",
-      "applicationCategory": "MultimediaApplication",
-      "operatingSystem": "Web",
-      "description": "Download videos, images, and music with no login. Search songs by title or singer name, select from suggestions, and download quickly.",
-      "offers": {
-        "@type": "Offer",
-        "price": "0",
-        "priceCurrency": "USD"
-      }
-    }
+  <meta property="og:site_name" content="Mega Downloader" />
+  <meta property="og:title" content="Mega Downloader | Free Video, Image and Music Downloader" />
+  <meta property="og:description" content="Download videos, images and songs for free with no login. Fast search, instant suggestions and one-click downloads." />
+  <meta property="og:url" content="https://example.com/" />
+  <meta property="og:image" content="https://example.com/og-image.jpg" />
+  <meta property="og:image:alt" content="Mega Downloader logo" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Mega Downloader | Free No-Login Downloader" />
+  <meta name="twitter:description" content="Free downloader for videos, images and music with no login. Search songs by title or artist and download quickly." />
+  <meta name="twitter:image" content="https://example.com/og-image.jpg" />
+
+  <meta name="google-site-verification" content="q5V-_QrDrd38a9qT7-K_q5yx0npviRAPyMPV8eDU23s" />
+
+  <script id="structured-data" type="application/ld+json"></script>
+  <script>
+    (() => {
+      const siteUrlMeta = document.querySelector('meta[name="site-url"]');
+      const configuredSiteUrl = siteUrlMeta?.content?.trim() || "";
+      const baseUrl = configuredSiteUrl
+        ? (/^https?:\/\//i.test(configuredSiteUrl) ? configuredSiteUrl : `https://${configuredSiteUrl}`)
+        : window.location.origin;
+      const canonicalUrl = new URL(window.location.pathname || "/", baseUrl).toString();
+      const imageUrl = new URL("/og-image.jpg", baseUrl).toString();
+
+      const canonical = document.querySelector('link[rel="canonical"]');
+      if (canonical) canonical.setAttribute("href", canonicalUrl);
+
+      const ogUrl = document.querySelector('meta[property="og:url"]');
+      if (ogUrl) ogUrl.setAttribute("content", canonicalUrl);
+
+      const ogImage = document.querySelector('meta[property="og:image"]');
+      if (ogImage) ogImage.setAttribute("content", imageUrl);
+
+      const twitterImage = document.querySelector('meta[name="twitter:image"]');
+      if (twitterImage) twitterImage.setAttribute("content", imageUrl);
+
+      const structuredDataScript = document.getElementById("structured-data");
+      if (!structuredDataScript) return;
+
+      const data = [
+        {
+          "@context": "https://schema.org",
+          "@type": "WebSite",
+          "name": "Mega Downloader",
+          "url": baseUrl
+        },
+        {
+          "@context": "https://schema.org",
+          "@type": "WebApplication",
+          "name": "Mega Downloader",
+          "url": canonicalUrl,
+          "applicationCategory": "MultimediaApplication",
+          "operatingSystem": "Web",
+          "description": "Free no-login downloader for videos, images and music.",
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+          },
+          "featureList": [
+            "No login required",
+            "Music search by title or artist",
+            "Video and image download support",
+            "Fast download flow"
+          ]
+        },
+        {
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "Do I need an account to use Mega Downloader?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "No. Mega Downloader is free to use with no login required."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Can I search songs by artist name?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Yes. You can search by song title or artist name, then pick from suggestions."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "What can I download?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "You can download supported videos, images and music files through the web app."
+              }
+            }
+          ]
+        }
+      ];
+
+      structuredDataScript.textContent = JSON.stringify(data);
+    })();
   </script>
-  <!-- Additional meta for Pinterest -->
+
   <meta name="pinterest-rich-pin" content="false" />
-  <!-- Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Saira:wght@300;400;600&display=swap" rel="stylesheet">
 </head>
 <body>
   <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
+  <noscript>
+    <main>
+      <h1>Mega Downloader</h1>
+      <p>Mega Downloader is a free no-login tool to download videos, images and music online.</p>
+      <p>You can search songs by title or artist name and download from supported platforms in a few steps.</p>
+    </main>
+  </noscript>
+  <script type="module" src="/src/main.jsx"></script>
 </body>
 </html>
