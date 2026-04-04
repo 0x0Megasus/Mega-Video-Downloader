@@ -47,6 +47,7 @@ const progressMap = new Map(); // id -> progress
 const files = new Map(); // id -> { buffer, type, ext, mime, platform, error, message }
 const pendingMessages = new Map(); // id -> { waitingForMedia: true, mode, requestAt }
 const musicSearchSessions = new Map(); // sessionId -> { messageId, options, createdAt, query }
+const inFlightMusicSearches = new Map(); // key -> Promise<{ sessionId, query, suggestions }>
 
 const MUSIC_SESSION_TTL_MS = 5 * 60 * 1000;
 
@@ -305,6 +306,106 @@ const scheduleMusicSessionCleanup = (sessionId) => {
   setTimeout(() => {
     musicSearchSessions.delete(sessionId);
   }, MUSIC_SESSION_TTL_MS);
+};
+
+class HttpError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.name = "HttpError";
+    this.status = status;
+  }
+}
+
+const buildMusicSearchKey = (req, query) => {
+  const headerClientId = sanitizeLabel(String(req.headers["x-client-id"] || ""));
+  const sourceClientId = headerClientId || sanitizeLabel(req.ip || req.socket?.remoteAddress || "unknown_client");
+  return `${sourceClientId.toLowerCase()}::${query.toLowerCase()}`;
+};
+
+const performMusicSearch = async (query) => {
+  let completed = false;
+  let timeout;
+  let handler;
+
+  const completeOnce = (fn) => {
+    if (completed) return;
+    completed = true;
+    clearTimeout(timeout);
+    if (handler) {
+      client.removeEventHandler(handler);
+    }
+    fn();
+  };
+
+  return new Promise((resolve, reject) => {
+    handler = async (event) => {
+      const msg = event.message;
+      if (!msg?.senderId || msg.senderId.value !== bot.id.value) return;
+      if (completed) return;
+
+      try {
+        if (msg.message && !msg.media) {
+          const text = sanitizeLabel(msg.message || "");
+          if (!text) return;
+          if (text.includes("⏳")) return;
+
+          const buttonOptions = flattenReplyButtons(msg);
+          const textOptions = parseMusicOptionsFromText(msg.message || "");
+          const rawOptions = buttonOptions.length > 0 ? buttonOptions : textOptions;
+          const options = filterMusicOptions(rawOptions, query);
+
+          if (options.length === 0) {
+            const setupButtonFound = rawOptions.some((option) =>
+              isSystemMusicButton(option?.label || "")
+            );
+
+            if (setupButtonFound) return;
+
+            if (/not found|no results|error|invalid/i.test(text)) {
+              completeOnce(() => reject(new HttpError(404, text)));
+            }
+            return;
+          }
+
+          const sessionId = createId("music");
+          musicSearchSessions.set(sessionId, {
+            messageId: msg.id,
+            options,
+            createdAt: Date.now(),
+            query
+          });
+          scheduleMusicSessionCleanup(sessionId);
+
+          completeOnce(() => {
+            resolve({
+              sessionId,
+              query,
+              suggestions: serializeMusicOptions(options)
+            });
+          });
+        }
+      } catch (error) {
+        completeOnce(() => {
+          reject(new HttpError(500, error?.message || "Failed to read music suggestions"));
+        });
+      }
+    };
+
+    timeout = setTimeout(() => {
+      completeOnce(() => reject(new HttpError(504, "Music search timed out. Please try again.")));
+    }, 45000);
+
+    const startSearch = async () => {
+      try {
+        client.addEventHandler(handler, new NewMessage({}));
+        await client.sendMessage(bot, { message: query });
+      } catch (error) {
+        completeOnce(() => reject(new HttpError(500, error?.message || "Unable to search music right now")));
+      }
+    };
+
+    startSearch();
+  });
 };
 
 setInterval(() => {
@@ -646,88 +747,27 @@ app.post("/api/music/search", async (req, res) => {
     return res.status(503).json({ error: "Telegram is busy right now. Please try again shortly." });
   }
 
-  let completed = false;
-  let timeout;
+  const searchKey = buildMusicSearchKey(req, query);
 
-  const completeOnce = (fn) => {
-    if (completed) return;
-    completed = true;
-    clearTimeout(timeout);
-    fn();
-  };
-
-  const handler = async (event) => {
-    const msg = event.message;
-    if (!msg?.senderId || msg.senderId.value !== bot.id.value) return;
-    if (completed) return;
-
-    try {
-      if (msg.message && !msg.media) {
-        const text = sanitizeLabel(msg.message || "");
-        if (!text) return;
-        if (text.includes("⏳")) return;
-
-        const buttonOptions = flattenReplyButtons(msg);
-        const textOptions = parseMusicOptionsFromText(msg.message || "");
-        const rawOptions = buttonOptions.length > 0 ? buttonOptions : textOptions;
-        const options = filterMusicOptions(rawOptions, query);
-
-        if (options.length === 0) {
-          const setupButtonFound = rawOptions.some((option) =>
-            isSystemMusicButton(option?.label || "")
-          );
-
-          if (setupButtonFound) return;
-
-          if (/not found|no results|error|invalid/i.test(text)) {
-            completeOnce(() => {
-              client.removeEventHandler(handler);
-              res.status(404).json({ error: text });
-            });
-          }
-          return;
-        }
-
-        const sessionId = createId("music");
-        musicSearchSessions.set(sessionId, {
-          messageId: msg.id,
-          options,
-          createdAt: Date.now(),
-          query
-        });
-        scheduleMusicSessionCleanup(sessionId);
-
-        completeOnce(() => {
-          client.removeEventHandler(handler);
-          res.json({
-            sessionId,
-            query,
-            suggestions: serializeMusicOptions(options)
-          });
-        });
+  let searchPromise = inFlightMusicSearches.get(searchKey);
+  if (!searchPromise) {
+    searchPromise = performMusicSearch(query);
+    inFlightMusicSearches.set(searchKey, searchPromise);
+    searchPromise.finally(() => {
+      if (inFlightMusicSearches.get(searchKey) === searchPromise) {
+        inFlightMusicSearches.delete(searchKey);
       }
-    } catch (error) {
-      completeOnce(() => {
-        client.removeEventHandler(handler);
-        res.status(500).json({ error: error?.message || "Failed to read music suggestions" });
-      });
-    }
-  };
-
-  timeout = setTimeout(() => {
-    completeOnce(() => {
-      client.removeEventHandler(handler);
-      res.status(504).json({ error: "Music search timed out. Please try again." });
     });
-  }, 45000);
+  } else {
+    console.log(`♻️ Reusing in-flight music search for key: ${searchKey}`);
+  }
 
   try {
-    client.addEventHandler(handler, new NewMessage({}));
-    await client.sendMessage(bot, { message: query });
+    const payload = await searchPromise;
+    res.json(payload);
   } catch (error) {
-    clearTimeout(timeout);
-    client.removeEventHandler(handler);
-    res.status(500).json({ error: error?.message || "Unable to search music right now" });
+    const status = Number.isInteger(error?.status) ? error.status : 500;
+    res.status(status).json({ error: error?.message || "Unable to search music right now" });
   }
 });
 

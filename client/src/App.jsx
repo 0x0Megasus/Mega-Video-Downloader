@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import "./App.css";
 
 const normalizeApiBase = (rawUrl) => {
@@ -39,6 +39,21 @@ const parseErrorMessage = async (response) => {
   return text || fallback;
 };
 
+const CLIENT_ID_STORAGE_KEY = "mega_downloader_client_id";
+
+const getClientId = () => {
+  if (typeof window === "undefined") return "unknown_client";
+
+  const existing = window.localStorage.getItem(CLIENT_ID_STORAGE_KEY);
+  if (existing) return existing;
+
+  const generated = window.crypto?.randomUUID?.()
+    || `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+  window.localStorage.setItem(CLIENT_ID_STORAGE_KEY, generated);
+  return generated;
+};
+
 const isControlSongSuggestion = (label = "") => {
   const value = (label || "")
     .replace(/^#?\d+[.)-]?\s*/u, "")
@@ -71,6 +86,8 @@ export default function App() {
   const [progress, setProgress] = useState(0);
   const [loading, setLoading] = useState(false);
   const [searchingMusic, setSearchingMusic] = useState(false);
+  const [clientId] = useState(() => getClientId());
+  const musicSearchInFlightRef = useRef(false);
 
   const API = normalizeApiBase(import.meta.env.VITE_API_URL);
 
@@ -202,7 +219,7 @@ export default function App() {
   };
 
   const handleMusicSearch = async () => {
-    if (loading || searchingMusic) return;
+    if (musicSearchInFlightRef.current || loading || searchingMusic) return;
 
     const query = musicQuery.trim();
     if (!query) {
@@ -210,6 +227,7 @@ export default function App() {
       return;
     }
 
+    musicSearchInFlightRef.current = true;
     setSearchingMusic(true);
     setStatus("Searching songs...");
     setMusicSuggestions([]);
@@ -219,7 +237,10 @@ export default function App() {
     try {
       const response = await fetch(`${API}/api/music/search`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-client-id": clientId
+        },
         body: JSON.stringify({ query })
       });
 
@@ -242,6 +263,7 @@ export default function App() {
     } catch (error) {
       setStatus(`${error.message || "Music search failed"} ❌`);
     } finally {
+      musicSearchInFlightRef.current = false;
       setSearchingMusic(false);
     }
   };
