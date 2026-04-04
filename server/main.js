@@ -677,15 +677,7 @@ app.post("/api/music/search", async (req, res) => {
             isSystemMusicButton(option?.label || "")
           );
 
-          if (setupButtonFound) {
-            completeOnce(() => {
-              client.removeEventHandler(handler);
-              res.status(502).json({
-                error: "Music bot sent setup buttons instead of songs. Please verify BOT_USERNAME points to your music search bot."
-              });
-            });
-            return;
-          }
+          if (setupButtonFound) return;
 
           if (/not found|no results|error|invalid/i.test(text)) {
             completeOnce(() => {
