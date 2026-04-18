@@ -23,22 +23,39 @@ const __dirname = path.dirname(__filename);
 const app = express();
 app.use(express.json());
 
-const allowedOrigins = (process.env.CLIENT_URL || "")
-  .split(",")
-  .map((origin) => origin.trim())
+const normalizeOrigin = (origin = "") => {
+  const value = String(origin || "").trim().toLowerCase();
+  return value.replace(/\/+$/, "");
+};
+
+const allowedOrigins = [
+  process.env.CLIENT_URL || "",
+  "https://mega-video-downloader.vercel.app",
+  "http://localhost:5173",
+  "http://localhost:3000"
+]
+  .flatMap((entry) => String(entry).split(","))
+  .map((origin) => normalizeOrigin(origin))
   .filter(Boolean);
 
-app.use(
-  cors({
-    origin(origin, callback) {
-      // Allow non-browser clients and all origins when no allowlist is configured.
-      if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-      return callback(new Error("Not allowed by CORS"));
+const corsOptions = {
+  origin(origin, callback) {
+    const normalizedRequestOrigin = normalizeOrigin(origin);
+
+    // Allow non-browser clients and all origins when no allowlist is configured.
+    if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(normalizedRequestOrigin)) {
+      return callback(null, true);
     }
-  })
-);
+
+    return callback(new Error("Not allowed by CORS"));
+  },
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "x-client-id"],
+  optionsSuccessStatus: 204
+};
+
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 
 const PORT = process.env.PORT || 5000;
 
