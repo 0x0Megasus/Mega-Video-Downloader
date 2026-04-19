@@ -3,7 +3,6 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
-import cors from "cors";
 import dns from "dns";
 import net from "net";
 import { TelegramClient } from "telegram";
@@ -38,24 +37,32 @@ const allowedOrigins = [
   .map((origin) => normalizeOrigin(origin))
   .filter(Boolean);
 
-const corsOptions = {
-  origin(origin, callback) {
-    const normalizedRequestOrigin = normalizeOrigin(origin);
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (!origin) {
+    return next();
+  }
 
-    // Allow non-browser clients and all origins when no allowlist is configured.
-    if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(normalizedRequestOrigin)) {
-      return callback(null, true);
-    }
+  const isAllowed = allowedOrigins.length === 0 || allowedOrigins.includes(normalizeOrigin(origin));
+  if (!isAllowed) {
+    return res.status(403).json({ error: "Not allowed by CORS" });
+  }
 
-    return callback(new Error("Not allowed by CORS"));
-  },
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "x-client-id"],
-  optionsSuccessStatus: 204
-};
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Vary", "Origin");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
 
-app.use(cors(corsOptions));
-app.options("*", cors(corsOptions));
+  if (req.method === "OPTIONS") {
+    res.setHeader("Access-Control-Allow-Methods", "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS");
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      req.headers["access-control-request-headers"] || "Content-Type"
+    );
+    return res.sendStatus(204);
+  }
+
+  next();
+});
 
 const PORT = process.env.PORT || 5000;
 

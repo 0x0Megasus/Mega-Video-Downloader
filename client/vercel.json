@@ -6,6 +6,6 @@
     }
   ],
   "env": {
-    "VITE_API_URL": ""
+    "VITE_API_URL": "https://mega-video-downloader-production-ae00.up.railway.app"
   }
 }
