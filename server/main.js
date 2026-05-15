@@ -30,7 +30,7 @@ const normalizeOrigin = (origin = "") => {
 const allowedOrigins = [
   process.env.CLIENT_URL || "",
   "https://mega-video-downloader.vercel.app",
-  "https://aylux.site",
+  "https://www.aylux.site",
   "http://localhost:5173",
   "http://localhost:3000"
 ]
