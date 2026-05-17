@@ -98,7 +98,7 @@ const SUPPORTED_PLATFORMS = [
 const FAQ_ITEMS = [
   {
     question: "Do I need to create an account?",
-    answer: "No. Mega Downloader is available with no sign-up and no login."
+    answer: "No. Downvid is available with no sign-up and no login."
   },
   {
     question: "Can I search music by artist name?",
@@ -127,17 +127,17 @@ export default function App() {
   const API = normalizeApiBase(import.meta.env.VITE_API_URL);
 
   useEffect(() => {
-    let nextTitle = "Mega Downloader | Free Video & Image Downloader (No Login)";
-    let nextDescription = "Download videos and images for free with no login on Mega Downloader.";
+    let nextTitle = "Downvid | Free Video & Image Downloader (No Login)";
+    let nextDescription = "Download videos and images for free with no login on Downvid.";
 
     if (mode === MODES.MUSIC) {
-      nextTitle = "Mega Downloader | Free Music Downloader by Song or Artist";
+      nextTitle = "Downvid | Free Music Downloader by Song or Artist";
       nextDescription = "Search songs by title or artist name, then download music for free with no login.";
     }
 
     if (mode === MODES.INFO) {
-      nextTitle = "Mega Downloader | Why Use Mega Downloader";
-      nextDescription = "See why Mega Downloader is fast, free, no-login, and built for music, video, and image downloads.";
+      nextTitle = "Downvid | Why Use Downvid";
+      nextDescription = "See why Downvid is fast, free, no-login, and built for music, video, and image downloads.";
     }
 
     document.title = nextTitle;
@@ -419,7 +419,7 @@ export default function App() {
           </button>
         </div>
 
-        <h1 className="title">Mega Downloader</h1>
+        <h1 className="title">Downvid</h1>
 
         {mode === MODES.MEDIA && (
           <p className="subtitle">
@@ -435,7 +435,7 @@ export default function App() {
 
         {mode === MODES.INFO && (
           <p className="subtitle">
-            Learn what makes Mega Downloader clean, fast, and reliable for daily use.
+            Learn what makes Downvid clean, fast, and reliable for daily use.
           </p>
         )}
 
@@ -508,11 +508,11 @@ export default function App() {
         )}
 
         {mode === MODES.INFO && (
-          <section className="seoSections" aria-label="Mega Downloader details">
+          <section className="seoSections" aria-label="Downvid details">
             <article className="seoCard">
-              <h2>Why Mega Downloader</h2>
+              <h2>Why Downvid</h2>
               <p>
-                Mega Downloader gives you premium-style features without friction: free usage, no login,
+                Downvid gives you premium-style features without friction: free usage, no login,
                 instant song search, and quick download flow.
               </p>
               <ul className="seoList">

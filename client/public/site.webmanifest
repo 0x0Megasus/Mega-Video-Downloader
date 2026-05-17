@@ -1,7 +1,8 @@
 {
-  "name": "Mega Downloader",
-  "short_name": "MegaDL",
+  "name": "Downvid",
+  "short_name": "DVid",
   "description": "Free no-login downloader for videos, images and music.",
+  "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

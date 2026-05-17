@@ -8,7 +8,7 @@ const projectRoot = path.resolve(__dirname, "..");
 const publicDir = path.join(projectRoot, "public");
 const logoSourcePath = path.join(projectRoot, "src", "assets", "MVD-Logo.jpg");
 const logoTargetPath = path.join(publicDir, "og-image.jpg");
-const siteUrl = "https://mega-video-downloader.vercel.app";
+const siteUrl = "https://www.downvid.online";
 const pagePaths = ["/"];
 const now = new Date().toISOString();
 
@@ -37,9 +37,10 @@ ${sitemapEntries}
 `;
 
 const manifest = {
-  name: "Mega Downloader",
-  short_name: "MegaDL",
+  name: "Downvid",
+  short_name: "DVid",
   description: "Free no-login downloader for videos, images and music.",
+  id: "/",
   start_url: "/",
   scope: "/",
   display: "standalone",
