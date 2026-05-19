@@ -219,6 +219,10 @@ select {
   margin: 10px 0 0;
   color: var(--muted);
 }
+.emptyState {
+  text-align: center;
+  padding: 24px;
+}
 
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(12px); }

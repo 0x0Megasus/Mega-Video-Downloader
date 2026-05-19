@@ -132,6 +132,13 @@ export default function BlogsPage() {
           </article>
         ))}
       </div>
+      {!loading && blogs.length === 0 && !error && (
+        <div className="emptyState">
+          <p className="statusLine" style={{ marginTop: "32px", fontSize: "15px" }}>
+            📡 Blogs are loading from external sources. Please refresh the page or come back in a moment.
+          </p>
+        </div>
+      )}
       <div ref={sentinelRef} />
       {loading && <p className="statusLine">Loading more blogs...</p>}
       {!hasMore && blogs.length > 0 && <p className="statusLine">No more blogs for now.</p>}
