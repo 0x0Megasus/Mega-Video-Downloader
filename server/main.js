@@ -93,30 +93,14 @@ const toIsoDate = (value) => {
   return date.toISOString();
 };
 
-const generateContentParagraphs = ({ title, source, excerpt, category, score = 0, comments = 0, publishedAt }) => {
-  const safeTitle = sanitizeLabel(title || "Tech update");
-  const safeExcerpt = sanitizeLabel(excerpt || "");
-  const published = new Date(publishedAt || Date.now()).toLocaleString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "2-digit"
-  });
-
-  const categoryLabel = String(category || "tech").toUpperCase();
-  const signals = [];
-  if (score > 0) signals.push(`${score} points`);
-  if (comments > 0) signals.push(`${comments} comments`);
-  const signalLine = signals.length > 0 ? `Engagement signals: ${signals.join(" • ")}.` : "Engagement signals are still building on this story.";
-
-  const actionable = safeExcerpt
-    ? `Key update: ${safeExcerpt}`
-    : "Key update: The source post does not include a long body, so review the original link for full technical details.";
-
-  return [
-    `${safeTitle} is trending in ${categoryLabel} news (${published}). ${actionable}`,
-    `Why this matters: teams tracking product strategy, engineering execution, AI adoption, and IT operations can use this update for faster decision-making.`,
-    `${signalLine} Source: ${source}. Read the original article for complete context, benchmarks, and implementation details.`
-  ];
+const parseContent = (content = "") => {
+  if (!content) return [];
+  // Split by paragraph markers and filter empty
+  return content
+    .split(/\n\n+/)
+    .map((p) => p.trim())
+    .filter((p) => p && p.length > 20)
+    .slice(0, 5); // Limit to first 5 paragraphs
 };
 
 const mapBlogItems = (items = [], sourceName, category) =>
