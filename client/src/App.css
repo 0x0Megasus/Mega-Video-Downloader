@@ -140,7 +140,7 @@ select {
 .blogCard:hover { border-color: var(--accent); box-shadow: 0 8px 25px rgba(212, 175, 55, 0.1); }
 .blogCard h3 { margin: 0; font-size: 1.1rem; }
 .blogCard p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
-.metaLine { display: flex; justify-content: space-between; gap: 12px; color: var(--meta-text); font-size: 12px; flex-wrap: wrap; }
+.metaLine { display: flex; justify-content: space-between; gap: 8px; color: var(--meta-text); font-size: 12px; flex-wrap: wrap; align-items: center; }
 .categoryBadge {
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -150,7 +150,7 @@ select {
   background: linear-gradient(135deg, #d4af37 0%, #e5c158 100%);
   border: none;
   border-radius: 6px;
-  padding: 5px 12px;
+  padding: 4px 10px;
   display: inline-block;
 }
 .textLink { color: var(--accent); font-weight: 700; text-decoration: none; transition: all .2s ease; }
