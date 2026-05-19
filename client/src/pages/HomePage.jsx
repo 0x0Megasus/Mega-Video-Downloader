@@ -50,12 +50,22 @@ export default function HomePage({ platformKey = "", forceMode = "" }) {
   const [progress, setProgress] = useState(0);
   const [loading, setLoading] = useState(false);
   const [searchingMusic, setSearchingMusic] = useState(false);
+  const [lastMusicAttempt, setLastMusicAttempt] = useState("");
   const [clientId] = useState(() => getClientId());
   const musicSearchInFlightRef = useRef(false);
 
   useEffect(() => {
     setMode(forceMode === MODES.MUSIC ? MODES.MUSIC : MODES.MEDIA);
   }, [forceMode]);
+
+  useEffect(() => {
+    setStatus("");
+    if (mode === MODES.MEDIA) {
+      setSearchingMusic(false);
+      setMusicSuggestions([]);
+      setMusicSessionId("");
+    }
+  }, [mode]);
 
   useEffect(() => {
     const pageTitle = activePlatform
@@ -140,6 +150,7 @@ export default function HomePage({ platformKey = "", forceMode = "" }) {
       if (!response.ok) throw new Error(await parseErrorMessage(response));
       const payload = await response.json();
       if (!payload?.id) throw new Error("Invalid response from server");
+      setUrl("");
       startProgressPolling(payload.id);
     } catch (error) {
       setStatus(error.message || "Server error");
@@ -153,6 +164,7 @@ export default function HomePage({ platformKey = "", forceMode = "" }) {
     setSearchingMusic(true);
     setStatus("Searching songs...");
     setMusicSuggestions([]);
+    setLastMusicAttempt(musicQuery.trim());
     try {
       const response = await fetch(`${API}/api/music/search`, {
         method: "POST",
@@ -164,6 +176,7 @@ export default function HomePage({ platformKey = "", forceMode = "" }) {
       setMusicSessionId(payload.sessionId || "");
       setMusicSuggestions(payload.suggestions || []);
       setStatus("Select a song from suggestions.");
+      setMusicQuery("");
     } catch (error) {
       setStatus(error.message || "Music search failed");
     } finally {
@@ -186,10 +199,26 @@ export default function HomePage({ platformKey = "", forceMode = "" }) {
       const payload = await response.json();
       setMusicSessionId("");
       setMusicSuggestions([]);
+      setMusicQuery("");
       startProgressPolling(payload.id);
     } catch (error) {
       setStatus(error.message || "Song download failed");
     }
+  };
+
+  const handleRetryMusic = () => {
+    if (loading || searchingMusic) return;
+    const fallback = lastMusicAttempt.trim();
+    if (!musicQuery.trim() && fallback) {
+      setMusicQuery(fallback);
+      setStatus("Retry query restored. Click Find songs.");
+      return;
+    }
+    if (musicQuery.trim()) {
+      handleMusicSearch();
+      return;
+    }
+    setStatus("Type a song or artist name to retry.");
   };
 
   return (
@@ -244,6 +273,7 @@ export default function HomePage({ platformKey = "", forceMode = "" }) {
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder={`Paste ${activePlatform.label} URL`}
+                disabled={loading || searchingMusic}
               />
               <button className="primaryBtn" onClick={handleMediaDownload} type="button" disabled={loading || searchingMusic}>
                 Download from {activePlatform.label}
@@ -254,11 +284,19 @@ export default function HomePage({ platformKey = "", forceMode = "" }) {
       )}
       {mode === MODES.MUSIC && (
         <div className="stack">
-          <input className="field" type="text" value={musicQuery} onChange={(e) => setMusicQuery(e.target.value)} placeholder="Song or artist name" />
+          <input
+            className="field"
+            type="text"
+            value={musicQuery}
+            onChange={(e) => setMusicQuery(e.target.value)}
+            placeholder="Song or artist name"
+            disabled={loading || searchingMusic}
+          />
           <button className="primaryBtn" onClick={handleMusicSearch} type="button" disabled={loading || searchingMusic}>Find songs</button>
+          <button className="primaryBtn secondaryBtn" onClick={handleRetryMusic} type="button" disabled={loading || searchingMusic}>Retry</button>
           <div className="songGrid">
             {musicSuggestions.map((song) => (
-              <button key={song.id} className="songItem" type="button" onClick={() => handleMusicSelection(song)}>
+              <button key={song.id} className="songItem" type="button" onClick={() => handleMusicSelection(song)} disabled={loading || searchingMusic}>
                 {song.label}
               </button>
             ))}

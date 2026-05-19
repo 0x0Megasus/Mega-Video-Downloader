@@ -78,6 +78,7 @@ let lastBlogRefreshAt = null;
 
 const MUSIC_SESSION_TTL_MS = 5 * 60 * 1000;
 const BLOG_REFRESH_MS = 60 * 60 * 1000;
+const MAX_BLOGS_CACHE = 160;
 
 const slugify = (value = "") =>
   String(value)
@@ -105,12 +106,14 @@ const generateContentParagraphs = ({ title, source, excerpt, category }) => {
 const mapBlogItems = (items = [], sourceName, category) =>
   items
     .filter((item) => item?.title && item?.url)
-    .slice(0, 8)
+    .slice(0, 60)
     .map((item, index) => {
       const title = sanitizeLabel(item.title);
       const excerpt = sanitizeLabel(item.story_text || item.selftext || item.description || "");
       const publishedAt = toIsoDate(item.created_at || item.created_utc * 1000 || item.time * 1000 || Date.now());
       const slug = `${slugify(title)}-${slugify(sourceName)}-${index + 1}`;
+      const score = Number(item.points || item.score || item.ups || 0);
+      const comments = Number(item.num_comments || item.descendants || 0);
       return {
         slug,
         title,
@@ -118,6 +121,10 @@ const mapBlogItems = (items = [], sourceName, category) =>
         category,
         source: sourceName,
         sourceUrl: item.url,
+        imageUrl: item.urlToImage || item.image_url || (typeof item.thumbnail === "string" && item.thumbnail.startsWith("http") ? item.thumbnail : ""),
+        score,
+        comments,
+        interestScore: score + comments * 2,
         publishedAt,
         content: generateContentParagraphs({ title, source: sourceName, excerpt, category })
       };
@@ -132,9 +139,9 @@ const fetchJson = async (url) => {
 const refreshAutoBlogs = async () => {
   try {
     const [hnTech, hnAI, redditTech] = await Promise.all([
-      fetchJson("https://hn.algolia.com/api/v1/search_by_date?query=technology&tags=story&hitsPerPage=12"),
-      fetchJson("https://hn.algolia.com/api/v1/search_by_date?query=artificial%20intelligence&tags=story&hitsPerPage=12"),
-      fetchJson("https://www.reddit.com/r/technology/new.json?limit=12")
+      fetchJson("https://hn.algolia.com/api/v1/search_by_date?query=technology&tags=story&hitsPerPage=80"),
+      fetchJson("https://hn.algolia.com/api/v1/search_by_date?query=artificial%20intelligence&tags=story&hitsPerPage=80"),
+      fetchJson("https://www.reddit.com/r/technology/new.json?limit=80")
     ]);
 
     const merged = [
@@ -142,8 +149,9 @@ const refreshAutoBlogs = async () => {
       ...mapBlogItems(hnAI?.hits || [], "Hacker News", "ai"),
       ...mapBlogItems((redditTech?.data?.children || []).map((x) => x?.data), "Reddit r/technology", "it")
     ]
+      .filter((item, index, arr) => arr.findIndex((x) => x.sourceUrl === item.sourceUrl) === index)
       .sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt))
-      .slice(0, 24);
+      .slice(0, MAX_BLOGS_CACHE);
 
     if (merged.length > 0) {
       autoBlogs = merged;
@@ -1070,13 +1078,33 @@ app.get("/api/info/:id", (req, res) => {
   });
 });
 
-app.get("/api/blogs", async (_, res) => {
+app.get("/api/blogs", async (req, res) => {
   if (autoBlogs.length === 0) {
     await refreshAutoBlogs();
   }
+
+  const page = Math.max(1, Number.parseInt(String(req.query.page || "1"), 10) || 1);
+  const limit = Math.min(24, Math.max(1, Number.parseInt(String(req.query.limit || "12"), 10) || 12));
+  const mode = String(req.query.mode || "latest").toLowerCase() === "interesting" ? "interesting" : "latest";
+
+  const sortedBlogs = [...autoBlogs].sort((a, b) => {
+    if (mode === "interesting") {
+      return (b.interestScore || 0) - (a.interestScore || 0);
+    }
+    return new Date(b.publishedAt) - new Date(a.publishedAt);
+  });
+
+  const start = (page - 1) * limit;
+  const blogs = sortedBlogs.slice(start, start + limit);
+  const hasMore = start + limit < sortedBlogs.length;
+
   res.json({
-    blogs: autoBlogs,
-    count: autoBlogs.length,
+    blogs,
+    count: sortedBlogs.length,
+    page,
+    limit,
+    hasMore,
+    mode,
     refreshIntervalMinutes: 60,
     lastRefreshAt: lastBlogRefreshAt
   });

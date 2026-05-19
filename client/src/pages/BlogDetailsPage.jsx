@@ -1,4 +1,4 @@
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 
 const normalizeApiBase = (rawUrl) => {
@@ -21,6 +21,7 @@ const parseApiError = async (res) => {
 };
 
 export default function BlogDetailsPage() {
+  const navigate = useNavigate();
   const { slug } = useParams();
   const [blog, setBlog] = useState(null);
   const [error, setError] = useState("");
@@ -42,7 +43,7 @@ export default function BlogDetailsPage() {
   if (error) {
     return (
       <section className="panel">
-        <p className="statusLine">{error}</p>
+        <p className="statusLine warning">{error}</p>
         <Link to="/blogs" className="textLink">Back to blogs</Link>
       </section>
     );
@@ -52,8 +53,10 @@ export default function BlogDetailsPage() {
 
   return (
     <section className="panel">
+      <button type="button" className="backBtn" onClick={() => navigate(-1)}>Go back</button>
       <h1>{blog.title}</h1>
       <p className="lead">{blog.excerpt}</p>
+      {blog.imageUrl && <img className="detailImage" src={blog.imageUrl} alt={blog.title} loading="lazy" />}
       <div className="metaLine">
         <span>{blog.category}</span>
         <span>{new Date(blog.publishedAt).toLocaleString()}</span>
