@@ -73,8 +73,87 @@ const files = new Map(); // id -> { buffer, type, ext, mime, platform, error, me
 const pendingMessages = new Map(); // id -> { waitingForMedia: true, mode, requestAt }
 const musicSearchSessions = new Map(); // sessionId -> { messageId, options, createdAt, query }
 const inFlightMusicSearches = new Map(); // key -> Promise<{ sessionId, query, suggestions }>
+let autoBlogs = [];
+let lastBlogRefreshAt = null;
 
 const MUSIC_SESSION_TTL_MS = 5 * 60 * 1000;
+const BLOG_REFRESH_MS = 60 * 60 * 1000;
+
+const slugify = (value = "") =>
+  String(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+
+const toIsoDate = (value) => {
+  const date = new Date(value || Date.now());
+  if (Number.isNaN(date.getTime())) return new Date().toISOString();
+  return date.toISOString();
+};
+
+const generateContentParagraphs = ({ title, source, excerpt, category }) => {
+  const safeTitle = sanitizeLabel(title || "Tech update");
+  const safeExcerpt = sanitizeLabel(excerpt || "");
+  return [
+    `${safeTitle} is currently trending in ${category.toUpperCase()} news. This update is curated for readers who follow technology, AI automation, software engineering, cybersecurity, cloud infrastructure, startups, and IT operations.`,
+    safeExcerpt || "This story highlights practical impact for developers, product teams, and IT decision-makers looking for reliable updates.",
+    `Source: ${source}. Our auto-generated brief keeps the article compact, searchable, and readable while preserving the original story link for deeper research.`
+  ];
+};
+
+const mapBlogItems = (items = [], sourceName, category) =>
+  items
+    .filter((item) => item?.title && item?.url)
+    .slice(0, 8)
+    .map((item, index) => {
+      const title = sanitizeLabel(item.title);
+      const excerpt = sanitizeLabel(item.story_text || item.selftext || item.description || "");
+      const publishedAt = toIsoDate(item.created_at || item.created_utc * 1000 || item.time * 1000 || Date.now());
+      const slug = `${slugify(title)}-${slugify(sourceName)}-${index + 1}`;
+      return {
+        slug,
+        title,
+        excerpt: excerpt || `Latest ${category} news update from ${sourceName}.`,
+        category,
+        source: sourceName,
+        sourceUrl: item.url,
+        publishedAt,
+        content: generateContentParagraphs({ title, source: sourceName, excerpt, category })
+      };
+    });
+
+const fetchJson = async (url) => {
+  const res = await fetch(url, { headers: { "User-Agent": "MegaDownloaderNewsBot/1.0" } });
+  if (!res.ok) throw new Error(`Failed to fetch ${url}`);
+  return res.json();
+};
+
+const refreshAutoBlogs = async () => {
+  try {
+    const [hnTech, hnAI, redditTech] = await Promise.all([
+      fetchJson("https://hn.algolia.com/api/v1/search_by_date?query=technology&tags=story&hitsPerPage=12"),
+      fetchJson("https://hn.algolia.com/api/v1/search_by_date?query=artificial%20intelligence&tags=story&hitsPerPage=12"),
+      fetchJson("https://www.reddit.com/r/technology/new.json?limit=12")
+    ]);
+
+    const merged = [
+      ...mapBlogItems(hnTech?.hits || [], "Hacker News", "tech"),
+      ...mapBlogItems(hnAI?.hits || [], "Hacker News", "ai"),
+      ...mapBlogItems((redditTech?.data?.children || []).map((x) => x?.data), "Reddit r/technology", "it")
+    ]
+      .sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt))
+      .slice(0, 24);
+
+    if (merged.length > 0) {
+      autoBlogs = merged;
+      lastBlogRefreshAt = new Date().toISOString();
+      console.log(`📰 Auto blogs refreshed: ${autoBlogs.length}`);
+    }
+  } catch (error) {
+    console.error("📰 Blog refresh failed:", error.message);
+  }
+};
 
 // Platform validation patterns - WITH vt.tiktok.com SUPPORT
 const platformValidators = [
@@ -990,6 +1069,30 @@ app.get("/api/info/:id", (req, res) => {
     size: fileData?.buffer?.length || 0
   });
 });
+
+app.get("/api/blogs", async (_, res) => {
+  if (autoBlogs.length === 0) {
+    await refreshAutoBlogs();
+  }
+  res.json({
+    blogs: autoBlogs,
+    count: autoBlogs.length,
+    refreshIntervalMinutes: 60,
+    lastRefreshAt: lastBlogRefreshAt
+  });
+});
+
+app.get("/api/blogs/:slug", async (req, res) => {
+  if (autoBlogs.length === 0) {
+    await refreshAutoBlogs();
+  }
+  const blog = autoBlogs.find((item) => item.slug === req.params.slug);
+  if (!blog) return res.status(404).json({ error: "Blog not found" });
+  res.json({ blog });
+});
+
+refreshAutoBlogs();
+setInterval(refreshAutoBlogs, BLOG_REFRESH_MS);
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);

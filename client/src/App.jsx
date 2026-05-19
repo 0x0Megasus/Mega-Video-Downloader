@@ -1,6 +1,16 @@
-import { useEffect, useRef, useState } from "react";
-import "./App.css";
+import { NavLink, Route, Routes } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { FaNewspaper } from "react-icons/fa6";
+import { IoHomeSharp } from "react-icons/io5";
+import { MdDarkMode, MdLightMode } from "react-icons/md";
+import { RiQuestionAnswerFill } from "react-icons/ri";
+import HomePage from "./pages/HomePage";
+import BlogsPage from "./pages/BlogsPage";
+import BlogDetailsPage from "./pages/BlogDetailsPage";
+import NotFoundPage from "./pages/NotFoundPage";
+import FaqPage from "./pages/FaqPage";
 
+<<<<<<< HEAD
 const normalizeApiBase = (rawUrl) => {
   const value = (rawUrl || "").trim();
   if (!value) return "http://localhost:5000";
@@ -109,24 +119,16 @@ const FAQ_ITEMS = [
     answer: "The app supports downloading videos, images, and audio from supported sources."
   }
 ];
+=======
+const THEME_KEY = "mvd_theme";
+const platformRoutes = ["youtube", "tiktok", "instagram", "facebook", "pinterest", "x", "reddit"];
+>>>>>>> 971dbab (feat: add routed platform/music UX, FAQs SEO page, theme improvements, and validation guidance)
 
 export default function App() {
-  const [mode, setMode] = useState(MODES.MEDIA);
-  const [url, setUrl] = useState("");
-  const [musicQuery, setMusicQuery] = useState("");
-  const [musicSessionId, setMusicSessionId] = useState("");
-  const [musicSuggestions, setMusicSuggestions] = useState([]);
-  const [activeSongLabel, setActiveSongLabel] = useState("");
-  const [status, setStatus] = useState("");
-  const [progress, setProgress] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [searchingMusic, setSearchingMusic] = useState(false);
-  const [clientId] = useState(() => getClientId());
-  const musicSearchInFlightRef = useRef(false);
-
-  const API = normalizeApiBase(import.meta.env.VITE_API_URL);
+  const [theme, setTheme] = useState(() => localStorage.getItem(THEME_KEY) || "dark");
 
   useEffect(() => {
+<<<<<<< HEAD
     let nextTitle = "Downvid | Free Video & Image Downloader (No Login)";
     let nextDescription = "Download videos and images for free with no login on Downvid.";
 
@@ -391,34 +393,38 @@ export default function App() {
       handleMusicSearch();
     }
   };
+=======
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem(THEME_KEY, theme);
+  }, [theme]);
+>>>>>>> 971dbab (feat: add routed platform/music UX, FAQs SEO page, theme improvements, and validation guidance)
 
   return (
-    <div className="wrapper">
-      <div className="card">
-        <div className="navbar" role="tablist" aria-label="Download modes">
+    <div className="appShell">
+      <header className="topbar">
+        <div className="brand">Mega Downloader</div>
+        <nav className="mainNav">
+          <NavLink to="/" className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}>
+            <IoHomeSharp /> Home
+          </NavLink>
+          <NavLink to="/blogs" className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}>
+            <FaNewspaper /> Blogs
+          </NavLink>
+          <NavLink to="/faqs" className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}>
+            <RiQuestionAnswerFill /> FAQs
+          </NavLink>
           <button
-            className={`navButton ${mode === MODES.MEDIA ? "active" : ""}`}
-            onClick={() => switchMode(MODES.MEDIA)}
             type="button"
+            className="themeBtn"
+            onClick={() => setTheme((value) => (value === "dark" ? "light" : "dark"))}
+            aria-label="Toggle theme"
           >
-            Video & Images
+            {theme === "dark" ? <MdLightMode /> : <MdDarkMode />}
           </button>
-          <button
-            className={`navButton ${mode === MODES.MUSIC ? "active" : ""}`}
-            onClick={() => switchMode(MODES.MUSIC)}
-            type="button"
-          >
-            Music
-          </button>
-          <button
-            className={`navButton ${mode === MODES.INFO ? "active" : ""}`}
-            onClick={() => switchMode(MODES.INFO)}
-            type="button"
-          >
-            About
-          </button>
-        </div>
+        </nav>
+      </header>
 
+<<<<<<< HEAD
         <h1 className="title">Downvid</h1>
 
         {mode === MODES.MEDIA && (
@@ -558,6 +564,21 @@ export default function App() {
 
         {mode !== MODES.INFO && !loading && !searchingMusic && <p className="status">{status}</p>}
       </div>
+=======
+      <main className="mainWrap">
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          {platformRoutes.map((platform) => (
+            <Route key={platform} path={`/platform/${platform}`} element={<HomePage platformKey={platform} />} />
+          ))}
+          <Route path="/music-downloader" element={<HomePage forceMode="music" />} />
+          <Route path="/blogs" element={<BlogsPage />} />
+          <Route path="/blogs/:slug" element={<BlogDetailsPage />} />
+          <Route path="/faqs" element={<FaqPage />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </main>
+>>>>>>> 971dbab (feat: add routed platform/music UX, FAQs SEO page, theme improvements, and validation guidance)
     </div>
   );
 }
