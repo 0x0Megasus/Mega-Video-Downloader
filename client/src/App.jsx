@@ -1,30 +1,21 @@
 import { NavLink, Route, Routes } from "react-router-dom";
-import { useEffect, useState } from "react";
 import { FaNewspaper } from "react-icons/fa6";
 import { IoHomeSharp } from "react-icons/io5";
-import { MdDarkMode, MdLightMode } from "react-icons/md";
 import { RiQuestionAnswerFill } from "react-icons/ri";
 import HomePage from "./pages/HomePage";
 import BlogsPage from "./pages/BlogsPage";
 import BlogDetailsPage from "./pages/BlogDetailsPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import FaqPage from "./pages/FaqPage";
+import { Link } from "react-router-dom";
 
-const THEME_KEY = "mvd_theme";
 const platformRoutes = ["youtube", "tiktok", "instagram", "facebook", "pinterest", "x", "reddit"];
 
 export default function App() {
-  const [theme, setTheme] = useState(() => localStorage.getItem(THEME_KEY) || "dark");
-
-  useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem(THEME_KEY, theme);
-  }, [theme]);
-
   return (
     <div className="appShell">
       <header className="topbar">
-        <div className="brand">Downvid</div>
+        <Link to="/" className="brand">Downvid</Link>
         <nav className="mainNav">
           <NavLink to="/" className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}>
             <IoHomeSharp /> Home
@@ -35,14 +26,6 @@ export default function App() {
           <NavLink to="/faqs" className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}>
             <RiQuestionAnswerFill /> FAQs
           </NavLink>
-          <button
-            type="button"
-            className="themeBtn"
-            onClick={() => setTheme((value) => (value === "dark" ? "light" : "dark"))}
-            aria-label="Toggle theme"
-          >
-            {theme === "dark" ? <MdLightMode /> : <MdDarkMode />}
-          </button>
         </nav>
       </header>
 
