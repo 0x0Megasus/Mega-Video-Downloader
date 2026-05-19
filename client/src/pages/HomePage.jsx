@@ -175,7 +175,7 @@ export default function HomePage({ platformKey = "", forceMode = "" }) {
       const payload = await response.json();
       setMusicSessionId(payload.sessionId || "");
       setMusicSuggestions(payload.suggestions || []);
-      setStatus("Select a song from suggestions.");
+      setStatus(`Found ${(payload.suggestions || []).length} songs. Select one to continue.`);
       setMusicQuery("");
     } catch (error) {
       setStatus(error.message || "Music search failed");

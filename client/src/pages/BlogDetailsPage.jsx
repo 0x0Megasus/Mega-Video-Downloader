@@ -68,7 +68,7 @@ export default function BlogDetailsPage() {
         />
       )}
       <div className="metaLine">
-        <span>{blog.category}</span>
+        <span className="categoryBadge">{blog.category}</span>
         <span>{new Date(blog.publishedAt).toLocaleString()}</span>
       </div>
       <div className="articleBody">

@@ -125,7 +125,7 @@ export default function BlogsPage() {
             <h3>{blog.title}</h3>
             <p>{blog.excerpt}</p>
             <div className="metaLine">
-              <span>{blog.category}</span>
+              <span className="categoryBadge">{blog.category}</span>
               <span>{new Date(blog.publishedAt).toLocaleString()}</span>
             </div>
             <Link to={`/blogs/${blog.slug}`} className="textLink">Read article</Link>
