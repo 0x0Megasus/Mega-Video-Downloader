@@ -1,7 +1,24 @@
 import { Link, useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 
-const API = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/+$/, "");
+const normalizeApiBase = (rawUrl) => {
+  const value = (rawUrl || "").trim();
+  if (!value) return "http://localhost:5000";
+  const withProtocol = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+  return withProtocol.replace(/\/+$/, "");
+};
+
+const API = normalizeApiBase(import.meta.env.VITE_API_URL);
+
+const parseApiError = async (res) => {
+  const contentType = res.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    const data = await res.json();
+    return data?.error || `Request failed (${res.status})`;
+  }
+  const text = await res.text();
+  return text || `Request failed (${res.status})`;
+};
 
 export default function BlogDetailsPage() {
   const { slug } = useParams();
@@ -12,11 +29,11 @@ export default function BlogDetailsPage() {
     const load = async () => {
       try {
         const res = await fetch(`${API}/api/blogs/${slug}`);
-        if (!res.ok) throw new Error("Not found");
+        if (!res.ok) throw new Error(await parseApiError(res));
         const data = await res.json();
         setBlog(data.blog);
-      } catch {
-        setError("Blog not found.");
+      } catch (err) {
+        setError(err?.message || "Blog not found.");
       }
     };
     load();
