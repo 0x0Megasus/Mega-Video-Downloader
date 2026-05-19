@@ -10,7 +10,7 @@ const normalizeApiBase = (rawUrl) => {
 
 const MODES = { MEDIA: "media", MUSIC: "music" };
 const API = normalizeApiBase(import.meta.env.VITE_API_URL);
-const CLIENT_ID_STORAGE_KEY = "mega_downloader_client_id";
+const CLIENT_ID_STORAGE_KEY = "downvid_client_id";
 const platformConfig = [
   { key: "youtube", label: "YouTube", keyword: "download YouTube videos", pattern: /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//i },
   { key: "tiktok", label: "TikTok", keyword: "download TikTok videos", pattern: /^(https?:\/\/)?(www\.)?(tiktok\.com|vm\.tiktok\.com|vt\.tiktok\.com)\//i },
@@ -72,7 +72,7 @@ export default function HomePage({ platformKey = "", forceMode = "" }) {
       ? `Free ${activePlatform.label} Video Downloader | Fast ${activePlatform.label} Download Tool`
       : "Free Video Downloader & Music Downloader | YouTube TikTok Instagram Downloader";
     const pageDescription = activePlatform
-      ? `${activePlatform.keyword} free with no login. Use Mega Downloader to download ${activePlatform.label} reels, shorts, clips, and HD social media videos in seconds.`
+      ? `${activePlatform.keyword} free with no login. Use Downvid to download ${activePlatform.label} reels, shorts, clips, and HD social media videos in seconds.`
       : "Download TikTok videos, download Instagram videos, download Pinterest videos, download YouTube videos, and download Facebook videos free with no login.";
     document.title = pageTitle;
     const descriptionMeta = document.querySelector('meta[name="description"]');
@@ -235,7 +235,7 @@ export default function HomePage({ platformKey = "", forceMode = "" }) {
   return (
     <section className="panel">
       <h1>Fast video, image, and music downloads</h1>
-      <p className="lead">Download TikTok videos, Instagram reels, Pinterest videos, and YouTube clips in seconds with a fast, free, no-login downloader.</p>
+      <p className="lead">Download TikTok videos, Instagram reels, Pinterest videos, YouTube clips, and music in seconds with a fast, free, no-login downloader.</p>
       <div className="platformTabs">
         {platformConfig.map((platform) => (
           <Link

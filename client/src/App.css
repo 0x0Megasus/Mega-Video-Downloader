@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Sora:wght@600;700&display=swap");
 
 :root,
 [data-theme="dark"] {
@@ -43,16 +43,16 @@
 * { box-sizing: border-box; }
 body {
   margin: 0;
-  font-family: "JetBrains Mono", monospace;
+  font-family: "gg sans", "Noto Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
   color: var(--ink);
-  background: radial-gradient(circle at 10% 10%, #111a2b 0%, var(--bg) 60%, #070b12 100%);
+  background: var(--bg);
 }
 
 .appShell { min-height: 100vh; padding: 24px; }
 .topbar {
   max-width: 1080px; margin: 0 auto 20px; display: flex; justify-content: space-between; align-items: center;
 }
-.brand { font-family: "JetBrains Mono", monospace; font-weight: 700; letter-spacing: 0.04em; }
+.brand { font-family: "gg sans", "Noto Sans", "Helvetica Neue", Helvetica, Arial, sans-serif; font-weight: 700; letter-spacing: 0.04em; }
 .mainNav { display: flex; gap: 10px; }
 .navLink {
   text-decoration: none; color: var(--ink); border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px;
@@ -77,7 +77,7 @@ body {
   padding: 26px; box-shadow: 0 16px 50px rgba(1, 8, 20, 0.35); animation: fadeUp .45s ease;
   text-align: center;
 }
-h1 { margin: 0 0 8px; font-size: clamp(1.8rem, 3vw, 2.5rem); letter-spacing: -0.03em; }
+h1 { margin: 0 0 8px; font-size: clamp(1.8rem, 3vw, 2.5rem); letter-spacing: -0.03em; font-family: "Sora", "gg sans", sans-serif; }
 .lead { margin: 0 auto 18px; color: var(--muted); max-width: 70ch; }
 .modeTabs { display: inline-flex; padding: 4px; border: 1px solid var(--line); border-radius: 12px; gap: 4px; margin: 0 auto 16px; }
 .modeTabs button { border: 0; background: transparent; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-weight: 700; color: var(--tab-idle-text); }
@@ -114,6 +114,13 @@ h1 { margin: 0 0 8px; font-size: clamp(1.8rem, 3vw, 2.5rem); letter-spacing: -0.
 }
 .stack { display: grid; gap: 10px; justify-items: center; }
 .field { border: 1px solid var(--line); border-radius: 12px; padding: 13px 14px; font-size: 15px; background: rgba(255,255,255,0.06); color: var(--ink); }
+.field,
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
+}
 .compactField {
   width: min(680px, 100%);
 }
@@ -126,7 +133,7 @@ h1 { margin: 0 0 8px; font-size: clamp(1.8rem, 3vw, 2.5rem); letter-spacing: -0.
 }
 .primaryBtn {
   border: 1px solid var(--accent); background: var(--btn-bg); color: #fff; border-radius: 12px; padding: 11px 14px; cursor: pointer;
-  font-family: "JetBrains Mono", monospace; transition: all .2s ease;
+  font-family: inherit; transition: all .2s ease;
 }
 .primaryBtn:hover { filter: brightness(1.06); transform: translateY(-1px); }
 .secondaryBtn {
@@ -225,6 +232,7 @@ h1 { margin: 0 0 8px; font-size: clamp(1.8rem, 3vw, 2.5rem); letter-spacing: -0.
 @media (max-width: 700px) {
   .appShell { padding: 14px; }
   .topbar { flex-direction: column; gap: 10px; align-items: flex-start; }
+  .brand { display: none; }
   .panel { padding: 18px; border-radius: 16px; }
   .modeTabs { top: 8px; }
   .compactBtn {
