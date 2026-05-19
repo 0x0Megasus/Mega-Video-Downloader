@@ -20,6 +20,22 @@ const faqItems = [
   {
     q: "Is Downvid free and secure to use?",
     a: "Downvid is free to use with no login required. The app validates platform URLs and provides a direct, clean download flow."
+  },
+  {
+    q: "How do I download music from YouTube?",
+    a: "Go to the Home tab, enter a song or artist name, click 'Find songs' to search YouTube, then select the track you want and click 'Download' to save the music file."
+  },
+  {
+    q: "What audio format does the music downloader support?",
+    a: "Downvid downloads music in MP3 format by default, which is compatible with all devices and media players."
+  },
+  {
+    q: "Can I download an entire playlist or album?",
+    a: "You can search for and download individual songs through the music downloader. Search for specific tracks by song title or artist name."
+  },
+  {
+    q: "How long does music download take?",
+    a: "Music downloads typically complete within seconds to a minute depending on your internet speed and the file size."
   }
 ];
 
