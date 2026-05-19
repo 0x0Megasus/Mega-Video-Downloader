@@ -202,7 +202,7 @@ select {
 }
 .faqGrid { display: grid; gap: 10px; }
 .faqItem {
-  border: 1px solid #1a1a1a;
+  border-bottom: 1px solid #333;
   border-radius: 10px;
   padding: 12px;
   background: #0f0f0f;
