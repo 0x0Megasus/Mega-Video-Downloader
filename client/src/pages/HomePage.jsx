@@ -133,9 +133,9 @@ export default function HomePage({ platformKey = "", forceMode = "" }) {
     if (activePlatform && !activePlatform.pattern.test(url.trim())) {
       const suggestedPlatform = platformConfig.find((platform) => platform.pattern.test(url.trim()));
       if (suggestedPlatform) {
-        setStatus(`Please use a valid ${activePlatform.label} URL for this route. Use the platform "${suggestedPlatform.label}" tab instead.`);
+        setStatus(`Please use a valid ${activePlatform.label} URL for this platform. Use the platform "${suggestedPlatform.label}" tab instead.`);
       } else {
-        setStatus(`Please use a valid ${activePlatform.label} URL for this route.`);
+        setStatus(`Please use a valid ${activePlatform.label} URL for this platform.`);
       }
       return;
     }
@@ -221,23 +221,36 @@ export default function HomePage({ platformKey = "", forceMode = "" }) {
     setStatus("Type a song or artist name to retry.");
   };
 
+  const handleEnterAction = (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    if (loading || searchingMusic) return;
+    if (mode === MODES.MEDIA) {
+      handleMediaDownload();
+      return;
+    }
+    handleMusicSearch();
+  };
+
   return (
     <section className="panel">
       <h1>Fast video, image, and music downloads</h1>
       <p className="lead">Download TikTok videos, Instagram reels, Pinterest videos, and YouTube clips in seconds with a fast, free, no-login downloader.</p>
-      {mode === MODES.MEDIA && (
-        <div className="platformTabs">
-          {platformConfig.map((platform) => (
-            <Link
-              key={platform.key}
-              className={`platformTab ${platform.key === platformKey ? "active" : ""}`}
-              to={`/platform/${platform.key}`}
-            >
-              {platform.label}
-            </Link>
-          ))}
-        </div>
-      )}
+      <div className="platformTabs">
+        {platformConfig.map((platform) => (
+          <Link
+            key={platform.key}
+            className={`platformTab ${platform.key === platformKey ? "active" : ""} ${mode === MODES.MUSIC ? "disabled" : ""}`}
+            to={mode === MODES.MUSIC ? "#" : `/platform/${platform.key}`}
+            onClick={(e) => {
+              if (mode === MODES.MUSIC) e.preventDefault();
+            }}
+            aria-disabled={mode === MODES.MUSIC}
+          >
+            {platform.label}
+          </Link>
+        ))}
+      </div>
       <div className="modeTabs">
         <button
           className={mode === MODES.MEDIA ? "active" : ""}
@@ -268,16 +281,19 @@ export default function HomePage({ platformKey = "", forceMode = "" }) {
           {activePlatform && (
             <>
               <input
-                className="field"
+                className="field compactField"
                 type="url"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
+                onKeyDown={handleEnterAction}
                 placeholder={`Paste ${activePlatform.label} URL`}
                 disabled={loading || searchingMusic}
               />
-              <button className="primaryBtn" onClick={handleMediaDownload} type="button" disabled={loading || searchingMusic}>
-                Download from {activePlatform.label}
-              </button>
+              <div className="actionRow">
+                <button className="primaryBtn compactBtn" onClick={handleMediaDownload} type="button" disabled={loading || searchingMusic}>
+                  Download from {activePlatform.label}
+                </button>
+              </div>
             </>
           )}
         </div>
@@ -285,15 +301,18 @@ export default function HomePage({ platformKey = "", forceMode = "" }) {
       {mode === MODES.MUSIC && (
         <div className="stack">
           <input
-            className="field"
+            className="field compactField"
             type="text"
             value={musicQuery}
             onChange={(e) => setMusicQuery(e.target.value)}
+            onKeyDown={handleEnterAction}
             placeholder="Song or artist name"
             disabled={loading || searchingMusic}
           />
-          <button className="primaryBtn" onClick={handleMusicSearch} type="button" disabled={loading || searchingMusic}>Find songs</button>
-          <button className="primaryBtn secondaryBtn" onClick={handleRetryMusic} type="button" disabled={loading || searchingMusic}>Retry</button>
+          <div className="actionRow">
+            <button className="primaryBtn compactBtn" onClick={handleMusicSearch} type="button" disabled={loading || searchingMusic}>Find songs</button>
+            <button className="primaryBtn secondaryBtn compactBtn" onClick={handleRetryMusic} type="button" disabled={loading || searchingMusic}>Retry</button>
+          </div>
           <div className="songGrid">
             {musicSuggestions.map((song) => (
               <button key={song.id} className="songItem" type="button" onClick={() => handleMusicSelection(song)} disabled={loading || searchingMusic}>

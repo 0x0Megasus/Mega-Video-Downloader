@@ -75,17 +75,26 @@ body {
 .panel {
   background: var(--card); backdrop-filter: blur(12px); border: 1px solid var(--line); border-radius: 22px;
   padding: 26px; box-shadow: 0 16px 50px rgba(1, 8, 20, 0.35); animation: fadeUp .45s ease;
+  text-align: center;
 }
 h1 { margin: 0 0 8px; font-size: clamp(1.8rem, 3vw, 2.5rem); letter-spacing: -0.03em; }
-.lead { margin: 0 0 18px; color: var(--muted); max-width: 70ch; }
-.modeTabs { display: inline-flex; padding: 4px; border: 1px solid var(--line); border-radius: 12px; gap: 4px; margin-bottom: 16px; }
+.lead { margin: 0 auto 18px; color: var(--muted); max-width: 70ch; }
+.modeTabs { display: inline-flex; padding: 4px; border: 1px solid var(--line); border-radius: 12px; gap: 4px; margin: 0 auto 16px; }
 .modeTabs button { border: 0; background: transparent; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-weight: 700; color: var(--tab-idle-text); }
 .modeTabs button.active { background: var(--tab-active-bg); color: var(--tab-active-text); }
+.modeTabs {
+  position: sticky;
+  top: 10px;
+  z-index: 20;
+  background: var(--card);
+  backdrop-filter: blur(12px);
+}
 .platformTabs {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   margin: 0 0 12px;
+  justify-content: center;
 }
 .platformTab {
   text-decoration: none;
@@ -99,8 +108,15 @@ h1 { margin: 0 0 8px; font-size: clamp(1.8rem, 3vw, 2.5rem); letter-spacing: -0.
   color: var(--ink);
   border-color: var(--accent);
 }
-.stack { display: grid; gap: 10px; }
+.platformTab.disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+.stack { display: grid; gap: 10px; justify-items: center; }
 .field { border: 1px solid var(--line); border-radius: 12px; padding: 13px 14px; font-size: 15px; background: rgba(255,255,255,0.06); color: var(--ink); }
+.compactField {
+  width: min(680px, 100%);
+}
 .field:hover {
   border-color: var(--accent);
 }
@@ -116,6 +132,17 @@ h1 { margin: 0 0 8px; font-size: clamp(1.8rem, 3vw, 2.5rem); letter-spacing: -0.
 .secondaryBtn {
   background: transparent;
   color: var(--accent);
+}
+.actionRow {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.compactBtn {
+  width: auto;
+  min-width: 130px;
+  padding: 10px 14px;
 }
 .songGrid { display: grid; gap: 8px; max-height: 260px; overflow: auto; }
 .songItem { text-align: left; border: 1px solid var(--line); background: rgba(255,255,255,0.04); color: var(--ink); border-radius: 10px; padding: 10px; cursor: pointer; }
@@ -199,4 +226,8 @@ h1 { margin: 0 0 8px; font-size: clamp(1.8rem, 3vw, 2.5rem); letter-spacing: -0.
   .appShell { padding: 14px; }
   .topbar { flex-direction: column; gap: 10px; align-items: flex-start; }
   .panel { padding: 18px; border-radius: 16px; }
+  .modeTabs { top: 8px; }
+  .compactBtn {
+    width: 100%;
+  }
 }
