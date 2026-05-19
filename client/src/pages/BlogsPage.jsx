@@ -20,6 +20,34 @@ const parseApiError = async (res) => {
   return text || `Request failed (${res.status})`;
 };
 
+const normalizeImageUrl = (value = "") => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (raw.startsWith("//")) return `https:${raw}`;
+  if (raw.startsWith("http://")) return raw.replace(/^http:\/\//i, "https://");
+  if (/^https?:\/\//i.test(raw)) return raw;
+  return "";
+};
+
+function BlogThumb({ imageUrl, title }) {
+  const [failed, setFailed] = useState(false);
+  const src = normalizeImageUrl(imageUrl);
+
+  if (!src || failed) {
+    return <div className="blogThumbFallback">NEWS</div>;
+  }
+
+  return (
+    <img
+      src={src}
+      alt={title}
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 export default function BlogsPage() {
   const [blogs, setBlogs] = useState([]);
   const [error, setError] = useState("");
@@ -92,7 +120,7 @@ export default function BlogsPage() {
         {blogs.map((blog) => (
           <article key={blog.slug} className="blogCard">
             <div className="blogThumb">
-              {blog.imageUrl ? <img src={blog.imageUrl} alt={blog.title} loading="lazy" /> : <div className="blogThumbFallback">NEWS</div>}
+              <BlogThumb imageUrl={blog.imageUrl} title={blog.title} />
             </div>
             <h3>{blog.title}</h3>
             <p>{blog.excerpt}</p>

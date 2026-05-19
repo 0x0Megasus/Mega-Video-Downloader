@@ -25,6 +25,7 @@ export default function BlogDetailsPage() {
   const { slug } = useParams();
   const [blog, setBlog] = useState(null);
   const [error, setError] = useState("");
+  const [imageFailed, setImageFailed] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -56,7 +57,16 @@ export default function BlogDetailsPage() {
       <button type="button" className="backBtn" onClick={() => navigate(-1)}>Go back</button>
       <h1>{blog.title}</h1>
       <p className="lead">{blog.excerpt}</p>
-      {blog.imageUrl && <img className="detailImage" src={blog.imageUrl} alt={blog.title} loading="lazy" />}
+      {blog.imageUrl && !imageFailed && (
+        <img
+          className="detailImage"
+          src={blog.imageUrl.replace(/^http:\/\//i, "https://")}
+          alt={blog.title}
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setImageFailed(true)}
+        />
+      )}
       <div className="metaLine">
         <span>{blog.category}</span>
         <span>{new Date(blog.publishedAt).toLocaleString()}</span>

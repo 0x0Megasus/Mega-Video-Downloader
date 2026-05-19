@@ -93,13 +93,29 @@ const toIsoDate = (value) => {
   return date.toISOString();
 };
 
-const generateContentParagraphs = ({ title, source, excerpt, category }) => {
+const generateContentParagraphs = ({ title, source, excerpt, category, score = 0, comments = 0, publishedAt }) => {
   const safeTitle = sanitizeLabel(title || "Tech update");
   const safeExcerpt = sanitizeLabel(excerpt || "");
+  const published = new Date(publishedAt || Date.now()).toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit"
+  });
+
+  const categoryLabel = String(category || "tech").toUpperCase();
+  const signals = [];
+  if (score > 0) signals.push(`${score} points`);
+  if (comments > 0) signals.push(`${comments} comments`);
+  const signalLine = signals.length > 0 ? `Engagement signals: ${signals.join(" • ")}.` : "Engagement signals are still building on this story.";
+
+  const actionable = safeExcerpt
+    ? `Key update: ${safeExcerpt}`
+    : "Key update: The source post does not include a long body, so review the original link for full technical details.";
+
   return [
-    `${safeTitle} is currently trending in ${category.toUpperCase()} news. This update is curated for readers who follow technology, AI automation, software engineering, cybersecurity, cloud infrastructure, startups, and IT operations.`,
-    safeExcerpt || "This story highlights practical impact for developers, product teams, and IT decision-makers looking for reliable updates.",
-    `Source: ${source}. Our auto-generated brief keeps the article compact, searchable, and readable while preserving the original story link for deeper research.`
+    `${safeTitle} is trending in ${categoryLabel} news (${published}). ${actionable}`,
+    `Why this matters: teams tracking product strategy, engineering execution, AI adoption, and IT operations can use this update for faster decision-making.`,
+    `${signalLine} Source: ${source}. Read the original article for complete context, benchmarks, and implementation details.`
   ];
 };
 
@@ -126,7 +142,7 @@ const mapBlogItems = (items = [], sourceName, category) =>
         comments,
         interestScore: score + comments * 2,
         publishedAt,
-        content: generateContentParagraphs({ title, source: sourceName, excerpt, category })
+        content: generateContentParagraphs({ title, source: sourceName, excerpt, category, score, comments, publishedAt })
       };
     });
 
