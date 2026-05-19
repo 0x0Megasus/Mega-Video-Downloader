@@ -1,5 +1,5 @@
 {
-  "appId": "com.megavideodownloader.app",
-  "appName": "Mega Video Downloader",
+  "appId": "com.downvid.app",
+  "appName": "Downvid",
   "webDir": "dist"
 }

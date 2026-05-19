@@ -29,7 +29,7 @@ const normalizeOrigin = (origin = "") => {
 
 const allowedOrigins = [
   process.env.CLIENT_URL || "",
-  "https://mega-video-downloader.vercel.app",
+  "https://downvid.online",
   "https://www.downvid.online",
   "http://localhost:5173",
   "http://localhost:3000"
@@ -131,7 +131,7 @@ const mapBlogItems = (items = [], sourceName, category) =>
     });
 
 const fetchJson = async (url) => {
-  const res = await fetch(url, { headers: { "User-Agent": "MegaDownloaderNewsBot/1.0" } });
+  const res = await fetch(url, { headers: { "User-Agent": "DownvidNewsBot/1.0" } });
   if (!res.ok) throw new Error(`Failed to fetch ${url}`);
   return res.json();
 };

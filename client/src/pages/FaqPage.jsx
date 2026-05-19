@@ -3,7 +3,7 @@ import { useEffect } from "react";
 const faqItems = [
   {
     q: "How can I download TikTok videos without login?",
-    a: "Open the TikTok tab, paste your TikTok link, and start the download. Mega Downloader offers fast TikTok video downloading without account signup."
+    a: "Open the TikTok tab, paste your TikTok link, and start the download. Downvid offers fast TikTok video downloading without account signup."
   },
   {
     q: "Can I download Instagram videos and reels for free?",
@@ -15,11 +15,11 @@ const faqItems = [
   },
   {
     q: "Can I download YouTube videos with this downloader?",
-    a: "Yes. Mega Downloader supports downloading YouTube videos through the dedicated YouTube page route and matching URL validation."
+    a: "Yes. Downvid supports downloading YouTube videos through the dedicated YouTube page route and matching URL validation."
   },
   {
-    q: "Is Mega Downloader free and secure to use?",
-    a: "Mega Downloader is free to use with no login required. The app validates platform URLs and provides a direct, clean download flow."
+    q: "Is Downvid free and secure to use?",
+    a: "Downvid is free to use with no login required. The app validates platform URLs and provides a direct, clean download flow."
   }
 ];
 
@@ -30,7 +30,7 @@ export default function FaqPage() {
     if (descriptionMeta) {
       descriptionMeta.setAttribute(
         "content",
-        "FAQs about how to download TikTok videos, download Instagram videos, download Pinterest videos, and download YouTube videos with Mega Downloader."
+        "FAQs about how to download TikTok videos, download Instagram videos, download Pinterest videos, and download YouTube videos with Downvid."
       );
     }
   }, []);

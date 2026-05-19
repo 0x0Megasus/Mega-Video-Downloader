@@ -24,7 +24,7 @@ export default function App() {
   return (
     <div className="appShell">
       <header className="topbar">
-        <div className="brand">Mega Downloader</div>
+        <div className="brand">Downvid</div>
         <nav className="mainNav">
           <NavLink to="/" className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}>
             <IoHomeSharp /> Home
