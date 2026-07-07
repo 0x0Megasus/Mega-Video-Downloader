@@ -493,15 +493,28 @@ let reconnectionInProgress = false;
 const TELEGRAM_DC = CONFIG.TELEGRAM_DC;
 
 function triggerReconnect() {
-  if (reconnectionInProgress) return;
+  if (reconnectionInProgress || reconnectTimer) return;
   reconnectionInProgress = true;
   ready = false;
   console.log("🔄 Initiating reconnection...");
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
   connectTelegram();
 }
 
 async function connectTelegram() {
   reconnectionInProgress = true;
+
+  if (client) {
+    try {
+      await client.disconnect();
+    } catch {
+      // non-critical
+    }
+  }
+
   try {
     connectionAttempts++;
     console.log(`🔌 Connecting to Telegram DC${TELEGRAM_DC.id} (attempt ${connectionAttempts})...`);
@@ -565,8 +578,14 @@ async function connectTelegram() {
     console.error("❌ Connection error:", error.message);
     ready = false;
 
-    const delay = Math.min(5000 * connectionAttempts, 30000);
-    console.log(`⏰ Retrying in ${delay / 1000} seconds...`);
+    const isDuplicate = error.message.includes("AUTH_KEY_DUPLICATED");
+    const baseDelay = isDuplicate ? 30000 : 5000;
+    const delay = Math.min(baseDelay * connectionAttempts, 60000);
+    if (isDuplicate) {
+      console.log(`⚠️ Session already in use by another instance. Retrying in ${delay / 1000} seconds...`);
+    } else {
+      console.log(`⏰ Retrying in ${delay / 1000} seconds...`);
+    }
 
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
