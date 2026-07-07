@@ -1,20 +1,27 @@
 {
   "name": "downvid",
-  "version": "1.0.0",
-  "description": "",
-  "main": "main.js",
+  "version": "2.0.0",
+  "description": "Scalable video and music downloader with Telegram integration",
+  "main": "cluster.js",
+  "type": "module",
   "scripts": {
+    "start": "node cluster.js",
+    "start:single": "node main.js",
+    "dev": "node --watch main.js",
+    "lint": "eslint main.js cluster.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
+  "keywords": ["downloader", "telegram", "video", "music"],
   "author": "",
   "license": "ISC",
-  "type": "module",
   "dependencies": {
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "input": "^1.0.1",
     "telegram": "^2.26.22"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

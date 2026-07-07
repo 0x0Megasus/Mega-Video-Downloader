@@ -1,7 +1,4 @@
 import express from "express";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import dns from "dns";
 import net from "net";
@@ -10,18 +7,45 @@ import { StringSession } from "telegram/sessions/index.js";
 import { NewMessage } from "telegram/events/index.js";
 import { Api } from "telegram/tl/index.js";
 
-// Force IPv4 only - CRITICAL FIX
 dns.setDefaultResultOrder('ipv4first');
 dns.setServers(['8.8.8.8', '1.1.1.1']);
 
 dotenv.config();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+
+// ============================================
+// CONFIGURATION
+// ============================================
+const CONFIG = {
+  PORT: parseInt(process.env.PORT || "5000", 10),
+  MUSIC_SESSION_TTL_MS: 5 * 60 * 1000,
+  MUSIC_SEARCH_TIMEOUT_MS: 45000,
+  MUSIC_DOWNLOAD_TIMEOUT_MS: 150000,
+  MEDIA_DOWNLOAD_TIMEOUT_MS: 120000,
+  MAP_CLEANUP_INTERVAL_MS: 60000,
+  KEEPALIVE_INTERVAL_MS: 45000,
+  MAX_FILES: 500,
+  MAX_PROGRESS_ENTRIES: 1000,
+  MAX_PENDING_MESSAGES: 200,
+  MAX_MUSIC_SESSIONS: 100,
+  MAX_INFLIGHT_SEARCHES: 50,
+  MAX_FILE_AGE_MS: 10 * 60 * 1000,
+  MAX_PROGRESS_AGE_MS: 10 * 60 * 1000,
+  RATE_LIMIT_WINDOW_MS: 10000,
+  RATE_LIMIT_MAX_REQUESTS: 20,
+  RATE_LIMIT_BURST: 5,
+  REQUEST_TIMEOUT_MS: 30000,
+  TELEGRAM_CONNECTION_RETRIES: 2,
+  TELEGRAM_TIMEOUT: 15,
+  TELEGRAM_DC: { id: 4, ip: "149.154.167.91", port: 443 },
+  GRACEFUL_SHUTDOWN_TIMEOUT_MS: 10000,
+};
 
 const app = express();
-app.use(express.json());
 
+// ============================================
+// CORS
+// ============================================
 const normalizeOrigin = (origin = "") => {
   const value = String(origin || "").trim().toLowerCase();
   return value.replace(/\/+$/, "");
@@ -29,20 +53,20 @@ const normalizeOrigin = (origin = "") => {
 
 const allowedOrigins = [
   process.env.CLIENT_URL || "",
-  "https://downvid.online",
+  "https://mega-video-downloader.vercel.app",
   "https://www.downvid.online",
   "http://localhost:5173",
-  "http://localhost:3000"
+  "http://localhost:3000",
 ]
   .flatMap((entry) => String(entry).split(","))
   .map((origin) => normalizeOrigin(origin))
   .filter(Boolean);
 
+app.use(express.json({ limit: "100kb" }));
+
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (!origin) {
-    return next();
-  }
+  if (!origin) return next();
 
   const isAllowed = allowedOrigins.length === 0 || allowedOrigins.includes(normalizeOrigin(origin));
   if (!isAllowed) {
@@ -65,139 +89,205 @@ app.use((req, res, next) => {
   next();
 });
 
-const PORT = process.env.PORT || 5000;
+// ============================================
+// RATE LIMITER
+// ============================================
+const rateLimitStore = new Map();
 
-// State
-const progressMap = new Map(); // id -> progress
-const files = new Map(); // id -> { buffer, type, ext, mime, platform, error, message }
-const pendingMessages = new Map(); // id -> { waitingForMedia: true, mode, requestAt }
-const musicSearchSessions = new Map(); // sessionId -> { messageId, options, createdAt, query }
-const inFlightMusicSearches = new Map(); // key -> Promise<{ sessionId, query, suggestions }>
-let autoBlogs = [];
-let lastBlogRefreshAt = null;
+const rateLimiter = (req, res, next) => {
+  const key = req.ip || req.socket?.remoteAddress || "unknown";
+  const now = Date.now();
+  let entry = rateLimitStore.get(key);
 
-const MUSIC_SESSION_TTL_MS = 5 * 60 * 1000;
-const BLOG_REFRESH_MS = 60 * 60 * 1000;
-const MAX_BLOGS_CACHE = 160;
-
-const slugify = (value = "") =>
-  String(value)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
-
-const toIsoDate = (value) => {
-  const date = new Date(value || Date.now());
-  if (Number.isNaN(date.getTime())) return new Date().toISOString();
-  return date.toISOString();
-};
-
-const parseContent = (content = "") => {
-  if (!content) return [];
-  // Split by paragraph markers and filter empty
-  return content
-    .split(/\n\n+/)
-    .map((p) => p.trim())
-    .filter((p) => p && p.length > 20)
-    .slice(0, 5); // Limit to first 5 paragraphs
-};
-
-const mapBlogItems = (items = [], sourceName, category) =>
-  items
-    .filter((item) => item?.title && item?.url)
-    .slice(0, 60)
-    .map((item, index) => {
-      const title = sanitizeLabel(item.title);
-      const excerpt = sanitizeLabel(item.story_text || item.selftext || item.description || "");
-      const publishedAt = toIsoDate(item.created_at || item.created_utc * 1000 || item.time * 1000 || Date.now());
-      const slug = `${slugify(title)}-${slugify(sourceName)}-${index + 1}`;
-      const score = Number(item.points || item.score || item.ups || 0);
-      const comments = Number(item.num_comments || item.descendants || 0);
-      return {
-        slug,
-        title,
-        excerpt: excerpt || `Latest ${category} news update from ${sourceName}.`,
-        category,
-        source: sourceName,
-        sourceUrl: item.url,
-        imageUrl: item.urlToImage || item.image_url || (typeof item.thumbnail === "string" && item.thumbnail.startsWith("http") ? item.thumbnail : ""),
-        score,
-        comments,
-        interestScore: score + comments * 2,
-        publishedAt,
-        content: generateContentParagraphs({ title, source: sourceName, excerpt, category, score, comments, publishedAt })
-      };
-    });
-
-const fetchJson = async (url) => {
-  const res = await fetch(url, { headers: { "User-Agent": "DownvidNewsBot/1.0" } });
-  if (!res.ok) throw new Error(`Failed to fetch ${url}`);
-  return res.json();
-};
-
-const refreshAutoBlogs = async () => {
-  try {
-    const [hnTech, hnAI, redditTech] = await Promise.all([
-      fetchJson("https://hn.algolia.com/api/v1/search_by_date?query=technology&tags=story&hitsPerPage=80"),
-      fetchJson("https://hn.algolia.com/api/v1/search_by_date?query=artificial%20intelligence&tags=story&hitsPerPage=80"),
-      fetchJson("https://www.reddit.com/r/technology/new.json?limit=80")
-    ]);
-
-    const merged = [
-      ...mapBlogItems(hnTech?.hits || [], "Hacker News", "tech"),
-      ...mapBlogItems(hnAI?.hits || [], "Hacker News", "ai"),
-      ...mapBlogItems((redditTech?.data?.children || []).map((x) => x?.data), "Reddit r/technology", "it")
-    ]
-      .filter((item, index, arr) => arr.findIndex((x) => x.sourceUrl === item.sourceUrl) === index)
-      .sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt))
-      .slice(0, MAX_BLOGS_CACHE);
-
-    if (merged.length > 0) {
-      autoBlogs = merged;
-      lastBlogRefreshAt = new Date().toISOString();
-      console.log(`📰 Auto blogs refreshed: ${autoBlogs.length}`);
-    }
-  } catch (error) {
-    console.error("📰 Blog refresh failed:", error.message);
+  if (!entry || now - entry.windowStart > CONFIG.RATE_LIMIT_WINDOW_MS) {
+    entry = { windowStart: now, count: 0 };
+    rateLimitStore.set(key, entry);
   }
+
+  entry.count++;
+
+  if (entry.count > CONFIG.RATE_LIMIT_MAX_REQUESTS) {
+    return res.status(429).json({ error: "Too many requests. Please slow down." });
+  }
+
+  next();
 };
 
-// Platform validation patterns - WITH vt.tiktok.com SUPPORT
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of rateLimitStore.entries()) {
+    if (now - entry.windowStart > CONFIG.RATE_LIMIT_WINDOW_MS * 2) {
+      rateLimitStore.delete(key);
+    }
+  }
+}, CONFIG.MAP_CLEANUP_INTERVAL_MS);
+
+
+
+// ============================================
+// REQUEST TIMEOUT
+// ============================================
+const requestTimeout = (timeoutMs = CONFIG.REQUEST_TIMEOUT_MS) => {
+  return (req, res, next) => {
+    const timer = setTimeout(() => {
+      if (!res.headersSent) {
+        res.status(408).json({ error: "Request timed out" });
+      }
+    }, timeoutMs);
+
+    res.on("finish", () => clearTimeout(timer));
+    res.on("close", () => clearTimeout(timer));
+    next();
+  };
+};
+
+// ============================================
+// APP MIDDLEWARE
+// ============================================
+app.use(rateLimiter);
+app.use(requestTimeout());
+
+// ============================================
+// STATE WITH SIZE BOUNDS & AUTO-CLEANUP
+// ============================================
+class BoundedMap {
+  #map = new Map();
+  #maxSize;
+  #ttlMs;
+  #cleanupInterval;
+
+  constructor(maxSize = 1000, ttlMs = 10 * 60 * 1000) {
+    this.#maxSize = maxSize;
+    this.#ttlMs = ttlMs;
+
+    this.#cleanupInterval = setInterval(() => {
+      this.#evictStale();
+    }, CONFIG.MAP_CLEANUP_INTERVAL_MS);
+
+    if (this.#cleanupInterval.unref) this.#cleanupInterval.unref();
+  }
+
+  get size() { return this.#map.size; }
+
+  get(key) {
+    const entry = this.#map.get(key);
+    if (!entry) return undefined;
+    if (Date.now() - entry.ts > this.#ttlMs) {
+      this.#map.delete(key);
+      return undefined;
+    }
+    return entry.value;
+  }
+
+  set(key, value) {
+    if (this.#map.size >= this.#maxSize) {
+      this.#evictOldest();
+    }
+    this.#map.set(key, { value, ts: Date.now() });
+    return this;
+  }
+
+  delete(key) {
+    return this.#map.delete(key);
+  }
+
+  has(key) {
+    const entry = this.#map.get(key);
+    if (!entry) return false;
+    if (Date.now() - entry.ts > this.#ttlMs) {
+      this.#map.delete(key);
+      return false;
+    }
+    return true;
+  }
+
+  entries() {
+    this.#evictStale();
+    const result = [];
+    for (const [key, entry] of this.#map.entries()) {
+      result.push([key, entry.value]);
+    }
+    return result;
+  }
+
+  keys() {
+    this.#evictStale();
+    return this.#map.keys();
+  }
+
+  #evictStale() {
+    const now = Date.now();
+    for (const [key, entry] of this.#map.entries()) {
+      if (now - entry.ts > this.#ttlMs) {
+        this.#map.delete(key);
+      }
+    }
+  }
+
+  #evictOldest() {
+    let oldestKey = null;
+    let oldestTs = Infinity;
+    for (const [key, entry] of this.#map.entries()) {
+      if (entry.ts < oldestTs) {
+        oldestTs = entry.ts;
+        oldestKey = key;
+      }
+    }
+    if (oldestKey) this.#map.delete(oldestKey);
+  }
+
+  destroy() {
+    clearInterval(this.#cleanupInterval);
+    this.#map.clear();
+  }
+}
+
+const files = new BoundedMap(CONFIG.MAX_FILES, CONFIG.MAX_FILE_AGE_MS);
+const progressMap = new BoundedMap(CONFIG.MAX_PROGRESS_ENTRIES, CONFIG.MAX_PROGRESS_AGE_MS);
+const pendingMessages = new Map();
+const musicSearchSessions = new BoundedMap(CONFIG.MAX_MUSIC_SESSIONS, CONFIG.MUSIC_SESSION_TTL_MS);
+const inFlightMusicSearches = new Map();
+const musicEventHandlers = new Map();
+
+const TELEGRAM_LOCK = { locked: false, queue: [] };
+
+// ============================================
+// PLATFORM VALIDATION
+// ============================================
 const platformValidators = [
-  { 
+  {
     name: "YouTube",
     patterns: [
       /^(https?:\/\/)?(www\.)?youtube\.com\/watch\?v=[\w-]+/,
       /^(https?:\/\/)?(www\.)?youtube\.com\/shorts\/[\w-]+/,
-      /^(https?:\/\/)?(www\.)?youtu\.be\/[\w-]+/
-    ]
+      /^(https?:\/\/)?(www\.)?youtu\.be\/[\w-]+/,
+    ],
   },
-  { 
+  {
     name: "TikTok",
     patterns: [
       /^(https?:\/\/)?(www\.)?tiktok\.com\/@[\w.-]+\/video\/\d+/,
       /^(https?:\/\/)?(www\.)?tiktok\.com\/[\w-]+/,
       /^(https?:\/\/)?(vm\.tiktok\.com)\/[\w-]+/,
-      /^(https?:\/\/)?(vt\.tiktok\.com)\/[\w-]+/
-    ]
+      /^(https?:\/\/)?(vt\.tiktok\.com)\/[\w-]+/,
+    ],
   },
-  { 
+  {
     name: "Instagram",
     patterns: [
       /^(https?:\/\/)?(www\.)?instagram\.com\/(p|reel|tv)\/[\w-]+/,
-      /^(https?:\/\/)?(www\.)?instagram\.com\/[\w-]+\/?/
-    ]
+      /^(https?:\/\/)?(www\.)?instagram\.com\/[\w-]+\/?/,
+    ],
   },
-  { 
+  {
     name: "Facebook",
     patterns: [
       /^(https?:\/\/)?(www\.)?facebook\.com\/.*\/videos\/\d+/,
       /^(https?:\/\/)?(www\.)?facebook\.com\/watch\/?\?v=\d+/,
-      /^(https?:\/\/)?(www\.)?fb\.watch\/[\w-]+/
-    ]
+      /^(https?:\/\/)?(www\.)?fb\.watch\/[\w-]+/,
+    ],
   },
-  { 
+  {
     name: "Pinterest",
     patterns: [
       /^(https?:\/\/)?(www\.)?pin\.it\/[\w-]+/,
@@ -205,51 +295,45 @@ const platformValidators = [
       /^(https?:\/\/)?(www\.)?pinterest\.[a-z.]{2,}\/[\w-]+\/[\w-]+\/\d+/,
       /^(https?:\/\/)?(www\.)?pinterest\.[a-z.]{2,}\/[\w-]+\/[\w-]+$/,
       /^(https?:\/\/)?(www\.)?pinterest\.[a-z.]{2,}\/pin\/\d+/,
-      /^(https?:\/\/)?(www\.)?pinterest\.[a-z.]{2,}\/[\w-]+\/\d+$/
-    ]
+      /^(https?:\/\/)?(www\.)?pinterest\.[a-z.]{2,}\/[\w-]+\/\d+$/,
+    ],
   },
-  { 
+  {
     name: "Twitter/X",
     patterns: [
       /^(https?:\/\/)?(www\.)?twitter\.com\/\w+\/status\/\d+/,
-      /^(https?:\/\/)?(www\.)?x\.com\/\w+\/status\/\d+/
-    ]
+      /^(https?:\/\/)?(www\.)?x\.com\/\w+\/status\/\d+/,
+    ],
   },
-  { 
+  {
     name: "Reddit",
     patterns: [
-      /^(https?:\/\/)?(www\.)?reddit\.com\/r\/\w+\/comments\/\w+\/[\w-]+/
-    ]
+      /^(https?:\/\/)?(www\.)?reddit\.com\/r\/\w+\/comments\/\w+\/[\w-]+/,
+    ],
   },
-  { 
+  {
     name: "Vimeo",
     patterns: [
-      /^(https?:\/\/)?(www\.)?vimeo\.com\/\d+/
-    ]
+      /^(https?:\/\/)?(www\.)?vimeo\.com\/\d+/,
+    ],
   },
-  { 
+  {
     name: "Dailymotion",
     patterns: [
-      /^(https?:\/\/)?(www\.)?dailymotion\.com\/video\/[\w-]+/
-    ]
-  }
+      /^(https?:\/\/)?(www\.)?dailymotion\.com\/video\/[\w-]+/,
+    ],
+  },
 ];
 
 const isValidUrl = (string) => {
-  try {
-    new URL(string);
-    return true;
-  } catch {
-    return false;
-  }
+  try { new URL(string); return true; }
+  catch { return false; }
 };
 
 const getPlatformFromUrl = (url) => {
   for (const platform of platformValidators) {
     for (const pattern of platform.patterns) {
-      if (pattern.test(url)) {
-        return platform.name;
-      }
+      if (pattern.test(url)) return platform.name;
     }
   }
   return null;
@@ -271,17 +355,14 @@ const deriveFileExtension = (doc, mimeType = "") => {
   const attributes = doc?.attributes || [];
   const fileNameAttr = attributes.find((attr) => attr?.fileName);
   const fileName = fileNameAttr?.fileName || "";
-
   if (fileName.includes(".")) {
     const ext = fileName.split(".").pop().toLowerCase().replace(/[^a-z0-9]/g, "");
     if (ext) return ext;
   }
-
   if (mimeType.includes("/")) {
     const mimeExt = mimeType.split("/")[1].split(";")[0].toLowerCase().trim();
     if (mimeExt) return mimeExt === "mpeg" ? "mp3" : mimeExt;
   }
-
   return "bin";
 };
 
@@ -290,6 +371,9 @@ const normalizeMime = (mimeType = "", fallbackType = "application/octet-stream")
   return mimeType;
 };
 
+// ============================================
+// MUSIC HELPERS
+// ============================================
 const flattenReplyButtons = (msg) => {
   const rows = msg?.replyMarkup?.rows || [];
   const options = [];
@@ -301,21 +385,9 @@ const flattenReplyButtons = (msg) => {
       if (!text) continue;
 
       if (button?.data !== undefined && button?.data !== null) {
-        options.push({
-          label: text,
-          action: {
-            type: "callback",
-            data: button.data
-          }
-        });
+        options.push({ label: text, action: { type: "callback", data: button.data } });
       } else {
-        options.push({
-          label: text,
-          action: {
-            type: "text",
-            text
-          }
-        });
+        options.push({ label: text, action: { type: "text", text } });
       }
     }
   }
@@ -334,13 +406,7 @@ const parseMusicOptionsFromText = (text = "") => {
   for (const line of lines) {
     const numberedMatch = line.match(/^(\d+)[\.\)-]\s*(.+)$/);
     if (numberedMatch?.[2]) {
-      options.push({
-        label: numberedMatch[2].trim(),
-        action: {
-          type: "text",
-          text: numberedMatch[1]
-        }
-      });
+      options.push({ label: numberedMatch[2].trim(), action: { type: "text", text: numberedMatch[1] } });
     }
   }
 
@@ -355,26 +421,11 @@ const normalizeMusicOptionLabel = (label = "") => {
 };
 
 const SYSTEM_MUSIC_BUTTON_PATTERNS = [
-  /^create your own bot$/i,
-  /^add to group$/i,
-  /^\+?\s*add to group$/i,
-  /^\+?\s*more tracks$/i,
-  /^more tracks$/i,
-  /^search$/i,
-  /^open app$/i,
-  /^start$/i,
-  /^help$/i,
-  /^settings$/i,
-  /^about$/i,
-  /^support$/i,
-  /^feedback$/i,
-  /^privacy$/i,
-  /^terms$/i,
-  /^next$/i,
-  /^previous$/i,
-  /^prev$/i,
-  /^back$/i,
-  /^menu$/i
+  /^create your own bot$/i, /^add to group$/i, /^\+?\s*add to group$/i,
+  /^\+?\s*more tracks$/i, /^more tracks$/i, /^search$/i, /^open app$/i,
+  /^start$/i, /^help$/i, /^settings$/i, /^about$/i, /^support$/i,
+  /^feedback$/i, /^privacy$/i, /^terms$/i, /^next$/i, /^previous$/i,
+  /^prev$/i, /^back$/i, /^menu$/i,
 ];
 
 const isSystemMusicButton = (label = "") => {
@@ -410,14 +461,14 @@ const filterMusicOptions = (options = [], query = "") => {
 const serializeMusicOptions = (options = []) => {
   return options.map((option, index) => ({
     id: String(index + 1),
-    label: option.label
+    label: option.label,
   }));
 };
 
-const scheduleMusicSessionCleanup = (sessionId) => {
-  setTimeout(() => {
-    musicSearchSessions.delete(sessionId);
-  }, MUSIC_SESSION_TTL_MS);
+const buildMusicSearchKey = (req, query) => {
+  const headerClientId = sanitizeLabel(String(req.headers["x-client-id"] || ""));
+  const sourceClientId = headerClientId || sanitizeLabel(req.ip || req.socket?.remoteAddress || "unknown_client");
+  return `${sourceClientId.toLowerCase()}::${query.toLowerCase()}`;
 };
 
 class HttpError extends Error {
@@ -428,31 +479,202 @@ class HttpError extends Error {
   }
 }
 
-const buildMusicSearchKey = (req, query) => {
-  const headerClientId = sanitizeLabel(String(req.headers["x-client-id"] || ""));
-  const sourceClientId = headerClientId || sanitizeLabel(req.ip || req.socket?.remoteAddress || "unknown_client");
-  return `${sourceClientId.toLowerCase()}::${query.toLowerCase()}`;
+// ============================================
+// TELEGRAM CONNECTION
+// ============================================
+let client = null;
+let bot = null;
+let ready = false;
+let connectionAttempts = 0;
+let reconnectTimer = null;
+let keepAliveTimer = null;
+
+const TELEGRAM_DC = CONFIG.TELEGRAM_DC;
+
+async function connectTelegram() {
+  try {
+    connectionAttempts++;
+    console.log(`🔌 Connecting to Telegram DC${TELEGRAM_DC.id} (attempt ${connectionAttempts})...`);
+
+    const socket = new net.Socket();
+    const connectionTest = await new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        socket.destroy();
+        resolve(false);
+      }, 5000);
+
+      socket.connect(TELEGRAM_DC.port, TELEGRAM_DC.ip, () => {
+        clearTimeout(timeout);
+        socket.destroy();
+        resolve(true);
+      });
+
+      socket.on("error", () => {
+        clearTimeout(timeout);
+        socket.destroy();
+        resolve(false);
+      });
+    });
+
+    if (!connectionTest) {
+      throw new Error(`Cannot reach ${TELEGRAM_DC.ip}:${TELEGRAM_DC.port}`);
+    }
+
+    console.log("✅ Network connection successful");
+
+    const newClient = new TelegramClient(
+      new StringSession(process.env.SESSION || ""),
+      Number(process.env.API_ID),
+      process.env.API_HASH,
+      {
+        connectionRetries: CONFIG.TELEGRAM_CONNECTION_RETRIES,
+        useWSS: false,
+        baseDc: TELEGRAM_DC.id,
+        ipVersion: 4,
+        timeout: CONFIG.TELEGRAM_TIMEOUT,
+      }
+    );
+
+    newClient.session.setDC(TELEGRAM_DC.id, TELEGRAM_DC.ip, TELEGRAM_DC.port);
+    await newClient.connect();
+
+    if (!(await newClient.isUserAuthorized())) {
+      throw new Error("Session expired - need new login");
+    }
+
+    const newBot = await newClient.getEntity(process.env.BOT_USERNAME);
+
+    client = newClient;
+    bot = newBot;
+    ready = true;
+    connectionAttempts = 0;
+
+    console.log("✅ Telegram ready and connected!");
+  } catch (error) {
+    console.error("❌ Connection error:", error.message);
+    ready = false;
+
+    const delay = Math.min(5000 * connectionAttempts, 30000);
+    console.log(`⏰ Retrying in ${delay / 1000} seconds...`);
+
+    reconnectTimer = setTimeout(connectTelegram, delay);
+  }
+}
+
+startKeepAlive();
+
+function startKeepAlive() {
+  if (keepAliveTimer) clearInterval(keepAliveTimer);
+
+  keepAliveTimer = setInterval(async () => {
+    if (client) {
+      try {
+        await client.invoke(new Api.ping.Ping({ ping_id: BigInt(Date.now()) }));
+        if (!ready) {
+          console.log("✅ Connection restored, marking as ready");
+          ready = true;
+        }
+      } catch {
+        if (ready) {
+          console.log("💓 Keep-alive failed (temporary)");
+          ready = false;
+        }
+      }
+    }
+  }, CONFIG.KEEPALIVE_INTERVAL_MS);
+
+  if (keepAliveTimer.unref) keepAliveTimer.unref();
+}
+
+async function ensureConnection() {
+  if (!client) throw new Error("Telegram client not initialized");
+  if (!ready) {
+    try {
+      await client.invoke(new Api.ping.Ping({ ping_id: BigInt(Date.now()) }));
+      ready = true;
+    } catch {
+      throw new Error("Telegram is busy right now. Please try again shortly.");
+    }
+  }
+  return client;
+}
+
+// ============================================
+// TELEGRAM REQUEST QUEUE (prevents queue buildup)
+// ============================================
+const telegramRequest = async (fn) => {
+  await ensureConnection();
+
+  return new Promise((resolve, reject) => {
+    const execute = async () => {
+      try {
+        const result = await fn(client);
+        resolve(result);
+      } catch (error) {
+        reject(error);
+      }
+    };
+
+    if (TELEGRAM_LOCK.locked) {
+      TELEGRAM_LOCK.queue.push(execute);
+      if (TELEGRAM_LOCK.queue.length > 100) {
+        TELEGRAM_LOCK.queue.shift();
+      }
+    } else {
+      TELEGRAM_LOCK.locked = true;
+      execute().finally(() => {
+        processTelegramQueue();
+      });
+    }
+  });
 };
 
+const processTelegramQueue = () => {
+  const next = TELEGRAM_LOCK.queue.shift();
+  if (next) {
+    next().finally(() => {
+      processTelegramQueue();
+    });
+  } else {
+    TELEGRAM_LOCK.locked = false;
+  }
+};
+
+// ============================================
+// MUSIC SEARCH (with proper error handling)
+// ============================================
 const performMusicSearch = async (query) => {
   let completed = false;
   let timeout;
   let handler;
+  let handlerAttached = false;
+  const searchId = createId("search");
 
-  const completeOnce = (fn) => {
+  const cleanup = () => {
     if (completed) return;
     completed = true;
     clearTimeout(timeout);
-    if (handler) {
-      client.removeEventHandler(handler);
+    if (handlerAttached && client) {
+      try {
+        client.removeEventHandler(handler);
+      } catch {
+        // Handler cleanup failed - non-critical
+      }
+      handlerAttached = false;
     }
+    musicEventHandlers.delete(searchId);
+  };
+
+  const completeOnce = (fn) => {
+    if (completed) return;
+    cleanup();
     fn();
   };
 
   return new Promise((resolve, reject) => {
     handler = async (event) => {
       const msg = event.message;
-      if (!msg?.senderId || msg.senderId.value !== bot.id.value) return;
+      if (!msg?.senderId || !bot || msg.senderId.value !== bot.id.value) return;
       if (completed) return;
 
       try {
@@ -470,7 +692,6 @@ const performMusicSearch = async (query) => {
             const setupButtonFound = rawOptions.some((option) =>
               isSystemMusicButton(option?.label || "")
             );
-
             if (setupButtonFound) return;
 
             if (/not found|no results|error|invalid/i.test(text)) {
@@ -484,15 +705,14 @@ const performMusicSearch = async (query) => {
             messageId: msg.id,
             options,
             createdAt: Date.now(),
-            query
+            query,
           });
-          scheduleMusicSessionCleanup(sessionId);
 
           completeOnce(() => {
             resolve({
               sessionId,
               query,
-              suggestions: serializeMusicOptions(options)
+              suggestions: serializeMusicOptions(options),
             });
           });
         }
@@ -505,11 +725,14 @@ const performMusicSearch = async (query) => {
 
     timeout = setTimeout(() => {
       completeOnce(() => reject(new HttpError(504, "Music search timed out. Please try again.")));
-    }, 45000);
+    }, CONFIG.MUSIC_SEARCH_TIMEOUT_MS);
 
     const startSearch = async () => {
       try {
         client.addEventHandler(handler, new NewMessage({}));
+        handlerAttached = true;
+        musicEventHandlers.set(searchId, { handler, searchId });
+
         await client.sendMessage(bot, { message: query });
       } catch (error) {
         completeOnce(() => reject(new HttpError(500, error?.message || "Unable to search music right now")));
@@ -520,22 +743,12 @@ const performMusicSearch = async (query) => {
   });
 };
 
-setInterval(() => {
-  const now = Date.now();
-  for (const [sessionId, session] of musicSearchSessions.entries()) {
-    if (now - session.createdAt > MUSIC_SESSION_TTL_MS) {
-      musicSearchSessions.delete(sessionId);
-    }
-  }
-}, 60000);
-
+// ============================================
+// FILE DOWNLOAD HELPERS
+// ============================================
 const pushFileError = (id, message, platform = "media") => {
   progressMap.set(id, -1);
-  files.set(id, {
-    error: true,
-    message: message || "Download failed",
-    platform
-  });
+  files.set(id, { error: true, message: message || "Download failed", platform });
 
   setTimeout(() => {
     files.delete(id);
@@ -565,22 +778,17 @@ const downloadMediaFromMessage = async ({ message, id, platform = "media" }) => 
       progressCallback: (received) => {
         const percent = Math.min(99, Math.floor((received / total) * 100));
         progressMap.set(id, percent);
-      }
+      },
     });
   } else if (message?.media?.document) {
     const doc = message.media.document;
     total = doc.size || 1;
     mimeType = normalizeMime(doc.mimeType || "");
 
-    if (mimeType.startsWith("image/")) {
-      fileType = "image";
-    } else if (mimeType.startsWith("video/")) {
-      fileType = "video";
-    } else if (mimeType.startsWith("audio/")) {
-      fileType = "audio";
-    } else {
-      fileType = "unknown";
-    }
+    if (mimeType.startsWith("image/")) fileType = "image";
+    else if (mimeType.startsWith("video/")) fileType = "video";
+    else if (mimeType.startsWith("audio/")) fileType = "audio";
+    else fileType = "unknown";
 
     fileExt = deriveFileExtension(doc, mimeType);
     if (fileType === "video" && !["mp4", "mov", "webm", "mkv"].includes(fileExt)) {
@@ -591,7 +799,7 @@ const downloadMediaFromMessage = async ({ message, id, platform = "media" }) => 
       progressCallback: (received) => {
         const percent = Math.min(99, Math.floor((received / total) * 100));
         progressMap.set(id, percent);
-      }
+      },
     });
   }
 
@@ -605,41 +813,44 @@ const downloadMediaFromMessage = async ({ message, id, platform = "media" }) => 
     ext: fileExt,
     mime: mimeType,
     platform,
-    size: total
+    size: total,
   });
 
   progressMap.set(id, 100);
 };
 
-const attachSingleMediaHandler = ({ id, platform, onTextMessage, timeoutMs = 120000 }) => {
+const attachSingleMediaHandler = ({ id, platform, onTextMessage, timeoutMs = CONFIG.MEDIA_DOWNLOAD_TIMEOUT_MS }) => {
   const createdAt = Date.now();
   pendingMessages.set(id, {
     waitingForMedia: true,
     mode: platform,
-    requestAt: createdAt
+    requestAt: createdAt,
   });
 
   const timeout = setTimeout(() => {
     if (!pendingMessages.has(id)) return;
     pendingMessages.delete(id);
-    client.removeEventHandler(handler);
+    if (client) {
+      try { client.removeEventHandler(handler); } catch {}
+    }
     pushFileError(id, "Download timed out. Please try again.", platform);
   }, timeoutMs);
 
   const cleanup = () => {
     clearTimeout(timeout);
     pendingMessages.delete(id);
-    client.removeEventHandler(handler);
+    if (client) {
+      try { client.removeEventHandler(handler); } catch {}
+    }
   };
 
   const handler = async (event) => {
     const msg = event.message;
-    if (!msg?.senderId || msg.senderId.value !== bot.id.value) return;
+    if (!msg?.senderId || !bot || msg.senderId.value !== bot.id.value) return;
     if (!pendingMessages.has(id)) return;
 
     if (msg.message && !msg.media) {
       const text = sanitizeLabel(msg.message || "");
-
       if (!text) return;
       if (text.includes("⏳")) return;
 
@@ -655,7 +866,6 @@ const attachSingleMediaHandler = ({ id, platform, onTextMessage, timeoutMs = 120
 
     if (msg.media) {
       cleanup();
-
       try {
         await downloadMediaFromMessage({ message: msg, id, platform });
       } catch (error) {
@@ -669,158 +879,39 @@ const attachSingleMediaHandler = ({ id, platform, onTextMessage, timeoutMs = 120
 };
 
 // ============================================
-// TELEGRAM CONNECTION
+// HEALTH ENDPOINT
 // ============================================
-
-// Hardcoded DC4 - confirmed working
-const TELEGRAM_DC = {
-  id: 4,
-  ip: "149.154.167.91",
-  port: 443
-};
-
-let client;
-let bot;
-let ready = false;
-let connectionAttempts = 0;
-
-async function connectTelegram() {
-  try {
-    connectionAttempts++;
-    console.log(`🔌 Connecting to Telegram DC${TELEGRAM_DC.id} (attempt ${connectionAttempts})...`);
-    
-    // Test TCP connection first
-    const socket = new net.Socket();
-    const connectionTest = await new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        socket.destroy();
-        resolve(false);
-      }, 5000);
-      
-      socket.connect(TELEGRAM_DC.port, TELEGRAM_DC.ip, () => {
-        clearTimeout(timeout);
-        socket.destroy();
-        resolve(true);
-      });
-      
-      socket.on('error', () => {
-        clearTimeout(timeout);
-        socket.destroy();
-        resolve(false);
-      });
-    });
-    
-    if (!connectionTest) {
-      throw new Error(`Cannot reach ${TELEGRAM_DC.ip}:${TELEGRAM_DC.port}`);
-    }
-    
-    console.log("✅ Network connection successful");
-    
-    // Create Telegram client
-    client = new TelegramClient(
-      new StringSession(process.env.SESSION || ""),
-      Number(process.env.API_ID),
-      process.env.API_HASH,
-      {
-        connectionRetries: 2,
-        useWSS: false,
-        baseDc: TELEGRAM_DC.id,
-        ipVersion: 4,
-        timeout: 15,
-      }
-    );
-    
-    // CRITICAL: Manually set the DC to bypass DNS
-    client.session.setDC(TELEGRAM_DC.id, TELEGRAM_DC.ip, TELEGRAM_DC.port);
-    
-    // Connect
-    await client.connect();
-    
-    // Verify authorization
-    if (!(await client.isUserAuthorized())) {
-      throw new Error("Session expired - need new login");
-    }
-    
-    // Get bot
-    bot = await client.getEntity(process.env.BOT_USERNAME);
-    
-    ready = true;
-    connectionAttempts = 0;
-    console.log("✅ Telegram ready and connected!");
-    
-  } catch (error) {
-    console.error("❌ Connection error:", error.message);
-    ready = false;
-    
-    // Simple retry with backoff
-    const delay = Math.min(5000 * connectionAttempts, 30000);
-    console.log(`⏰ Retrying in ${delay/1000} seconds...`);
-    setTimeout(connectTelegram, delay);
-  }
-}
-
-// Start connection
-connectTelegram();
+app.get("/health", (req, res) => {
+  res.json({
+    status: ready ? "ok" : "degraded",
+    uptime: process.uptime(),
+    connections: {
+      files: files.size,
+      progress: progressMap.size,
+      pendingMessages: pendingMessages.size,
+      musicSessions: musicSearchSessions.size,
+      inflightSearches: inFlightMusicSearches.size,
+      queueLength: TELEGRAM_LOCK.queue.length,
+    },
+    memory: process.memoryUsage(),
+  });
+});
 
 // ============================================
-// KEEP-ALIVE
+// API ENDPOINTS
 // ============================================
 
-setInterval(async () => {
-  if (client) {
-    try {
-      await client.invoke(new Api.ping.Ping({ 
-        ping_id: BigInt(Date.now()) 
-      }));
-      console.log("💓 Keep-alive OK");
-      
-      if (!ready) {
-        console.log("✅ Connection restored, marking as ready");
-        ready = true;
-      }
-    } catch (err) {
-      console.log("💓 Keep-alive failed (temporary)");
-    }
-  }
-}, 45000);
-
-async function ensureConnection() {
-  if (!client) {
-    throw new Error("Telegram client not initialized");
-  }
-  
-  if (!ready) {
-    try {
-      await client.invoke(new Api.ping.Ping({ ping_id: BigInt(Date.now()) }));
-      console.log("✅ Connection verified, marking as ready");
-      ready = true;
-    } catch (err) {
-      throw new Error("Telegram not connected");
-    }
-  }
-  
-  return client;
-}
-
-// ============================================
-// API ENDPOINTS - FIXED FOR ⏳ HANDLING
-// ============================================
-
-// Start download for media URLs (video/image)
 app.post("/api/download", async (req, res) => {
   const { url } = req.body;
 
-  if (!url) {
-    return res.status(400).json({ error: "URL is required" });
-  }
-
-  if (!isValidUrl(url)) {
-    return res.status(400).json({ error: "Invalid URL format" });
-  }
+  if (!url) return res.status(400).json({ error: "URL is required" });
+  if (!isValidUrl(url)) return res.status(400).json({ error: "Invalid URL format" });
 
   const platform = getPlatformFromUrl(url);
-  if (!platform) {
-    return res.status(400).json({ error: "URL not supported" });
+  if (!platform) return res.status(400).json({ error: "URL not supported" });
+
+  if (files.size >= CONFIG.MAX_FILES) {
+    return res.status(503).json({ error: "Server is at capacity. Please try again shortly." });
   }
 
   try {
@@ -846,11 +937,14 @@ app.post("/api/download", async (req, res) => {
   }
 });
 
-// Search music by song/singer name and return selectable suggestions
 app.post("/api/music/search", async (req, res) => {
   const query = sanitizeLabel(req.body?.query || "");
   if (!query) {
     return res.status(400).json({ error: "Song name or singer name is required" });
+  }
+
+  if (inFlightMusicSearches.size >= CONFIG.MAX_INFLIGHT_SEARCHES) {
+    return res.status(503).json({ error: "Too many music searches right now. Please try again shortly." });
   }
 
   try {
@@ -870,8 +964,6 @@ app.post("/api/music/search", async (req, res) => {
         inFlightMusicSearches.delete(searchKey);
       }
     });
-  } else {
-    console.log(`♻️ Reusing in-flight music search for key: ${searchKey}`);
   }
 
   try {
@@ -883,7 +975,6 @@ app.post("/api/music/search", async (req, res) => {
   }
 });
 
-// Download selected song from the previous suggestion list
 app.post("/api/music/download", async (req, res) => {
   const sessionId = sanitizeLabel(req.body?.sessionId || "");
   const optionId = sanitizeLabel(req.body?.optionId || "");
@@ -897,7 +988,7 @@ app.post("/api/music/download", async (req, res) => {
     return res.status(404).json({ error: "Music search expired. Please search again." });
   }
 
-  if (Date.now() - session.createdAt > MUSIC_SESSION_TTL_MS) {
+  if (Date.now() - session.createdAt > CONFIG.MUSIC_SESSION_TTL_MS) {
     musicSearchSessions.delete(sessionId);
     return res.status(410).json({ error: "Music search expired. Please search again." });
   }
@@ -905,6 +996,10 @@ app.post("/api/music/download", async (req, res) => {
   const optionIndex = Number(optionId) - 1;
   if (Number.isNaN(optionIndex) || optionIndex < 0 || optionIndex >= session.options.length) {
     return res.status(400).json({ error: "Invalid song selection" });
+  }
+
+  if (files.size >= CONFIG.MAX_FILES) {
+    return res.status(503).json({ error: "Server is at capacity. Please try again shortly." });
   }
 
   try {
@@ -924,15 +1019,11 @@ app.post("/api/music/download", async (req, res) => {
       id,
       platform: "Music",
       onTextMessage: (text) => {
-        if (/error|failed|not found|unavailable|cannot/i.test(text)) {
-          return false;
-        }
-        if (/choose|select|again|retry|option|wait|processing|downloading|preparing|please|fetching|working/i.test(text)) {
-          return true;
-        }
+        if (/error|failed|not found|unavailable|cannot/i.test(text)) return false;
+        if (/choose|select|again|retry|option|wait|processing|downloading|preparing|please|fetching|working/i.test(text)) return true;
         return false;
       },
-      timeoutMs: 150000
+      timeoutMs: CONFIG.MUSIC_DOWNLOAD_TIMEOUT_MS,
     });
 
     if (selectedOption.action.type === "callback") {
@@ -940,7 +1031,7 @@ app.post("/api/music/download", async (req, res) => {
         new Api.messages.GetBotCallbackAnswer({
           peer: bot,
           msgId: session.messageId,
-          data: selectedOption.action.data
+          data: selectedOption.action.data,
         })
       );
     } else {
@@ -948,11 +1039,7 @@ app.post("/api/music/download", async (req, res) => {
     }
 
     musicSearchSessions.delete(sessionId);
-    res.json({
-      id,
-      platform: "Music",
-      selected: selectedOption.label
-    });
+    res.json({ id, platform: "Music", selected: selectedOption.label });
   } catch (error) {
     if (detachMediaHandler) detachMediaHandler();
     pendingMessages.delete(id);
@@ -961,7 +1048,6 @@ app.post("/api/music/download", async (req, res) => {
   }
 });
 
-// Download file endpoint - WITH UNIQUE FILENAMES AND PROPER CLEANUP
 app.get("/api/file/:id", async (req, res) => {
   const fileData = files.get(req.params.id);
 
@@ -969,40 +1055,23 @@ app.get("/api/file/:id", async (req, res) => {
     return res.status(404).json({ error: "File not found or expired" });
   }
 
-  // Create a unique filename with platform, timestamp, and random string
   const timestamp = Date.now();
   const randomStr = Math.random().toString(36).substring(2, 8);
   const platform = fileData.platform || "media";
   let fileName;
   let contentType;
-  
+
   if (fileData.type === "image") {
-    // Format: platform_timestamp_random.image
     fileName = `${platform}_${timestamp}_${randomStr}.${fileData.ext}`;
-    
-    // Set correct content type based on extension
-    switch(fileData.ext) {
-      case 'jpg':
-      case 'jpeg':
-        contentType = 'image/jpeg';
-        break;
-      case 'png':
-        contentType = 'image/png';
-        break;
-      case 'gif':
-        contentType = 'image/gif';
-        break;
-      case 'webp':
-        contentType = 'image/webp';
-        break;
-      case 'bmp':
-        contentType = 'image/bmp';
-        break;
-      default:
-        contentType = fileData.mime || 'image/jpeg';
+    switch (fileData.ext) {
+      case "jpg": case "jpeg": contentType = "image/jpeg"; break;
+      case "png": contentType = "image/png"; break;
+      case "gif": contentType = "image/gif"; break;
+      case "webp": contentType = "image/webp"; break;
+      case "bmp": contentType = "image/bmp"; break;
+      default: contentType = fileData.mime || "image/jpeg";
     }
   } else if (fileData.type === "video") {
-    // Format: platform_timestamp_random.mp4
     fileName = `${platform}_${timestamp}_${randomStr}.${fileData.ext || "mp4"}`;
     contentType = fileData.mime || "video/mp4";
   } else if (fileData.type === "audio") {
@@ -1010,138 +1079,153 @@ app.get("/api/file/:id", async (req, res) => {
     contentType = fileData.mime || "audio/mpeg";
   } else {
     fileName = `${platform}_${timestamp}_${randomStr}.${fileData.ext}`;
-    contentType = fileData.mime || 'application/octet-stream';
+    contentType = fileData.mime || "application/octet-stream";
   }
-  
-  // Set headers for download with unique filename and no caching
-  res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-  res.setHeader('Content-Type', contentType);
-  res.setHeader('Content-Length', fileData.buffer.length);
-  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
-  
-  // Send the buffer
+
+  res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+  res.setHeader("Content-Type", contentType);
+  res.setHeader("Content-Length", fileData.buffer.length);
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+
   res.send(fileData.buffer);
-  
-  // ✅ PROPER CLEANUP: Wait for finish event before deleting
-  res.on('finish', () => {
-    // File successfully sent to client - NOW it's safe to delete
+
+  res.on("finish", () => {
     files.delete(req.params.id);
     progressMap.delete(req.params.id);
-    console.log(`✅ File sent and cleaned up: ${req.params.id} (${fileData.type})`);
   });
-  
-  // ✅ Handle client disconnection
-  res.on('close', () => {
+
+  res.on("close", () => {
     if (!res.writableEnded) {
-      // Client disconnected before download completed
       files.delete(req.params.id);
       progressMap.delete(req.params.id);
-      console.log(`⚠️ Client disconnected, cleaned up: ${req.params.id}`);
     }
   });
 });
 
-// Get progress - WITH ERROR MESSAGE SUPPORT
 app.get("/api/progress/:id", (req, res) => {
   const progress = progressMap.get(req.params.id);
   const fileData = files.get(req.params.id);
-  
+
   if (progress === undefined) {
     return res.status(404).json({ error: "Progress not found" });
   }
-  
-  // If it's an error, send error message
+
   if (progress === -1 && fileData?.error) {
-    return res.json({ 
-      progress: -1, 
-      error: fileData.message || "This video cannot be downloaded"
-    });
+    return res.json({ progress: -1, error: fileData.message || "This video cannot be downloaded" });
   }
-  
+
   res.json({ progress });
 });
 
-// Get file info - WITH ERROR INFO
 app.get("/api/info/:id", (req, res) => {
   const fileData = files.get(req.params.id);
-  
-  res.json({ 
+
+  res.json({
     exists: !!(fileData && fileData.buffer),
     type: fileData?.type || null,
     ext: fileData?.ext || null,
     platform: fileData?.platform || null,
     error: fileData?.error || false,
     message: fileData?.message || null,
-    size: fileData?.buffer?.length || 0
+    size: fileData?.buffer?.length || 0,
   });
 });
 
-app.get("/api/blogs", async (req, res) => {
-  if (autoBlogs.length === 0) {
-    await refreshAutoBlogs();
-  }
+// ============================================
+// SERVER START
+// ============================================
+connectTelegram();
 
-  const page = Math.max(1, Number.parseInt(String(req.query.page || "1"), 10) || 1);
-  const limit = Math.min(24, Math.max(1, Number.parseInt(String(req.query.limit || "12"), 10) || 12));
-  const mode = String(req.query.mode || "latest").toLowerCase() === "interesting" ? "interesting" : "latest";
+const server = app.listen(CONFIG.PORT, () => {
+  console.log(`🚀 Server running on port ${CONFIG.PORT}`);
+});
 
-  const sortedBlogs = [...autoBlogs].sort((a, b) => {
-    if (mode === "interesting") {
-      return (b.interestScore || 0) - (a.interestScore || 0);
+// ============================================
+// GRACEFUL SHUTDOWN
+// ============================================
+const gracefulShutdown = async (signal) => {
+  console.log(`\n⚠️  Received ${signal}. Starting graceful shutdown...`);
+
+  server.close(() => {
+    console.log("✅ HTTP server closed");
+  });
+
+  const shutdownTimeout = setTimeout(() => {
+    console.error("⚠️  Forced shutdown after timeout");
+    process.exit(1);
+  }, CONFIG.GRACEFUL_SHUTDOWN_TIMEOUT_MS);
+
+  try {
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    if (keepAliveTimer) clearInterval(keepAliveTimer);
+
+    if (client) {
+      try {
+        await client.disconnect();
+        console.log("✅ Telegram client disconnected");
+      } catch {
+        // non-critical
+      }
     }
-    return new Date(b.publishedAt) - new Date(a.publishedAt);
-  });
 
-  const start = (page - 1) * limit;
-  const blogs = sortedBlogs.slice(start, start + limit);
-  const hasMore = start + limit < sortedBlogs.length;
+    files.destroy();
 
-  res.json({
-    blogs,
-    count: sortedBlogs.length,
-    page,
-    limit,
-    hasMore,
-    mode,
-    refreshIntervalMinutes: 60,
-    lastRefreshAt: lastBlogRefreshAt
-  });
-});
-
-app.get("/api/blogs/:slug", async (req, res) => {
-  if (autoBlogs.length === 0) {
-    await refreshAutoBlogs();
-  }
-  const blog = autoBlogs.find((item) => item.slug === req.params.slug);
-  if (!blog) return res.status(404).json({ error: "Blog not found" });
-  res.json({ blog });
-});
-
-refreshAutoBlogs();
-setInterval(refreshAutoBlogs, BLOG_REFRESH_MS);
-
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
-
-// Debug - log ready state periodically
-setInterval(() => {
-  let totalMB = 0;
-  for (const [_, fileData] of files) {
-    if (fileData && fileData.buffer) {
-      totalMB += fileData.buffer.length / (1024 * 1024);
-    }
-  }
-  console.log(`📊 Status - Ready: ${ready}, Client: ${!!client}, Files: ${files.size}, MusicSessions: ${musicSearchSessions.size}, Total: ${totalMB.toFixed(2)} MB`);
-}, 30000);
-
-// Handle errors gracefully
-process.on('uncaughtException', (err) => {
-  console.error('💥 Fatal error:', err.message);
-  // Don't exit on keep-alive errors
-  if (!err.message.includes('ping') && !err.message.includes('Ping')) {
+    clearTimeout(shutdownTimeout);
+    console.log("✅ Graceful shutdown complete");
+    process.exit(0);
+  } catch {
+    clearTimeout(shutdownTimeout);
     process.exit(1);
   }
+};
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+
+// ============================================
+// ERROR HANDLING - NEVER CRASH THE PROCESS
+// ============================================
+process.on("uncaughtException", (err) => {
+  console.error("💥 Fatal error:", err.message, err.stack);
+
+  if (!ready && err.message.includes("ping")) {
+    return;
+  }
+
+  if (err.message.includes("Timeout")) {
+    console.log("🔄 Timeout error caught - resuming normal operation");
+    return;
+  }
+
+  if (err.message.includes("disconnected") || err.message.includes("DISCONNECT")) {
+    console.log("🔄 Telegram disconnected - initiating reconnection");
+    ready = false;
+    if (!reconnectTimer) {
+      reconnectTimer = setTimeout(connectTelegram, 5000);
+    }
+    return;
+  }
+
+  console.log("🔄 Uncaught exception swallowed - server continues running");
+});
+
+process.on("unhandledRejection", (reason) => {
+  if (reason instanceof HttpError) {
+    console.log(`⚠️ Unhandled HttpError: ${reason.status} - ${reason.message}`);
+    return;
+  }
+
+  if (reason?.message && reason.message.includes("Timeout")) {
+    console.log("⚠️ Unhandled timeout rejection swallowed");
+    return;
+  }
+
+  if (reason?.message && reason.message.includes("disconnected")) {
+    console.log("⚠️ Disconnection rejection ignored - reconnection will handle");
+    return;
+  }
+
+  console.error("⚠️ Unhandled rejection:", reason?.message || reason);
 });
