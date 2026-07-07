@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Download, Music, Search, RefreshCw, ArrowRight, Loader } from "lucide-react";
+import { Download, Music, Search, RefreshCw, Loader } from "lucide-react";
 
 const normalizeApiBase = (rawUrl) => {
   const value = (rawUrl || "").trim();
@@ -339,7 +339,7 @@ export default function HomePage({ platformKey = "instagram", forceMode = "" }) 
                 >
                   <span className="songNumber">#{song.id}</span>
                   <span>{song.label}</span>
-                  <ArrowRight size={14} style={{ marginLeft: "auto", opacity: 0.4 }} />
+                  <Download size={14} style={{ marginLeft: "auto", opacity: 0.4 }} />
                 </button>
               ))}
             </div>

@@ -1055,17 +1055,8 @@ app.post("/api/music/download", async (req, res) => {
       timeoutMs: CONFIG.MUSIC_DOWNLOAD_TIMEOUT_MS,
     });
 
-    if (selectedOption.action.type === "callback") {
-      await client.invoke(
-        new Api.messages.GetBotCallbackAnswer({
-          peer: bot,
-          msgId: session.messageId,
-          data: selectedOption.action.data,
-        })
-      );
-    } else {
-      await client.sendMessage(bot, { message: selectedOption.action.text });
-    }
+    const optionNumber = String(optionIndex + 1);
+    await client.sendMessage(bot, { message: optionNumber });
 
     musicSearchSessions.delete(sessionId);
     res.json({ id, platform: "Music", selected: selectedOption.label });
