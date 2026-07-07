@@ -593,7 +593,7 @@ async function ensureConnection() {
       await client.invoke(new Api.ping.Ping({ ping_id: BigInt(Date.now()) }));
       ready = true;
     } catch {
-      throw new Error("Telegram is busy right now. Please try again shortly.");
+      throw new Error("Service is busy right now. Please try again shortly.");
     }
   }
   return client;
@@ -950,7 +950,7 @@ app.post("/api/music/search", async (req, res) => {
   try {
     await ensureConnection();
   } catch {
-    return res.status(503).json({ error: "Telegram is busy right now. Please try again shortly." });
+    return res.status(503).json({ error: "Service is busy right now. Please try again shortly." });
   }
 
   const searchKey = buildMusicSearchKey(req, query);
@@ -1005,7 +1005,7 @@ app.post("/api/music/download", async (req, res) => {
   try {
     await ensureConnection();
   } catch {
-    return res.status(503).json({ error: "Telegram is busy right now. Please try again shortly." });
+    return res.status(503).json({ error: "Service is busy right now. Please try again shortly." });
   }
 
   const selectedOption = session.options[optionIndex];
