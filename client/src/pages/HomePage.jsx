@@ -228,12 +228,17 @@ export default function HomePage({ platformKey = "instagram", forceMode = "" }) 
 
   return (
     <section className="panel">
-      <h1 className="panelTitle">
-        {activePlatform.label} Downloader
-      </h1>
-      <p className="panelSubtitle">
-        Paste any {activePlatform.label} URL below to download videos and images instantly.
-      </p>
+      {mode === MODES.MEDIA ? (
+        <>
+          <h1 className="panelTitle">{activePlatform.label} Downloader</h1>
+          <p className="panelSubtitle">Paste any {activePlatform.label} URL below to download videos and images instantly.</p>
+        </>
+      ) : (
+        <>
+          <h1 className="panelTitle">Music Downloader</h1>
+          <p className="panelSubtitle">Search any song by title or artist name, pick from the results, and download instantly.</p>
+        </>
+      )}
 
       {mode === MODES.MEDIA && (
         <div className="platformBar">
