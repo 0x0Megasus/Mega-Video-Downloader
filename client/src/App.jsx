@@ -1,4 +1,4 @@
-import { NavLink, Route, Routes, Link } from "react-router-dom";
+import { NavLink, Route, Routes, Link, useLocation } from "react-router-dom";
 import { Home, HelpCircle } from "lucide-react";
 import HomePage from "./pages/HomePage";
 import NotFoundPage from "./pages/NotFoundPage";
@@ -7,6 +7,9 @@ import FaqPage from "./pages/FaqPage";
 const platformRoutes = ["youtube", "tiktok", "instagram", "facebook", "pinterest", "x", "reddit"];
 
 export default function App() {
+  const location = useLocation();
+  const isHome = location.pathname === "/" || location.pathname.startsWith("/platform/") || location.pathname === "/music-downloader";
+
   return (
     <div className="appShell">
       <header className="topbar">
@@ -14,9 +17,9 @@ export default function App() {
           Down<span className="brandAccent">vid</span>
         </Link>
         <nav className="mainNav">
-          <NavLink to="/platform/instagram" className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}>
+          <Link to="/" className={`navLink ${isHome ? "active" : ""}`}>
             <Home size={15} /> Home
-          </NavLink>
+          </Link>
           <NavLink to="/faqs" className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}>
             <HelpCircle size={15} /> FAQs
           </NavLink>
