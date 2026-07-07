@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { Download, Music, Search, RefreshCw, ArrowRight, Loader } from "lucide-react";
 
 const normalizeApiBase = (rawUrl) => {
   const value = (rawUrl || "").trim();
@@ -11,6 +12,7 @@ const normalizeApiBase = (rawUrl) => {
 const MODES = { MEDIA: "media", MUSIC: "music" };
 const API = normalizeApiBase(import.meta.env.VITE_API_URL);
 const CLIENT_ID_STORAGE_KEY = "downvid_client_id";
+
 const platformConfig = [
   { key: "youtube", label: "YouTube", keyword: "download YouTube videos", pattern: /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//i },
   { key: "tiktok", label: "TikTok", keyword: "download TikTok videos", pattern: /^(https?:\/\/)?(www\.)?(tiktok\.com|vm\.tiktok\.com|vt\.tiktok\.com)\//i },
@@ -18,7 +20,7 @@ const platformConfig = [
   { key: "facebook", label: "Facebook", keyword: "download Facebook videos", pattern: /^(https?:\/\/)?(www\.)?(facebook\.com|fb\.watch)\//i },
   { key: "pinterest", label: "Pinterest", keyword: "download Pinterest videos", pattern: /^(https?:\/\/)?(www\.)?(pinterest\.[a-z.]{2,}|pin\.it)\//i },
   { key: "x", label: "X / Twitter", keyword: "download X videos", pattern: /^(https?:\/\/)?(www\.)?(x\.com|twitter\.com)\//i },
-  { key: "reddit", label: "Reddit", keyword: "download Reddit videos", pattern: /^(https?:\/\/)?(www\.)?reddit\.com\//i }
+  { key: "reddit", label: "Reddit", keyword: "download Reddit videos", pattern: /^(https?:\/\/)?(www\.)?reddit\.com\//i },
 ];
 
 const getClientId = () => {
@@ -82,6 +84,7 @@ export default function HomePage({ platformKey = "", forceMode = "" }) {
   const startProgressPolling = (id) => {
     let finished = false;
     setLoading(true);
+    setProgress(0);
     setStatus("Preparing file...");
     const interval = setInterval(async () => {
       if (finished) return;
@@ -175,8 +178,9 @@ export default function HomePage({ platformKey = "", forceMode = "" }) {
       const payload = await response.json();
       setMusicSessionId(payload.sessionId || "");
       setMusicSuggestions(payload.suggestions || []);
-      setStatus(`Found ${(payload.suggestions || []).length} songs. Select one to continue.`);
-      setMusicQuery("");
+      const count = (payload.suggestions || []).length;
+      setStatus(count > 0 ? `Found ${count} song${count > 1 ? "s" : ""}. Select one to download.` : "No songs found. Try a different name.");
+      if (count > 0) setMusicQuery("");
     } catch (error) {
       setStatus(error.message || "Music search failed");
     } finally {
@@ -225,109 +229,150 @@ export default function HomePage({ platformKey = "", forceMode = "" }) {
     if (event.key !== "Enter") return;
     event.preventDefault();
     if (loading || searchingMusic) return;
-    if (mode === MODES.MEDIA) {
-      handleMediaDownload();
-      return;
-    }
+    if (mode === MODES.MEDIA) { handleMediaDownload(); return; }
     handleMusicSearch();
   };
 
+  const isWarning = /please use a valid|pick a platform|failed|timed out|error|not found|no songs/i.test(status);
+
   return (
     <section className="panel">
-      <h1>Fast video, image, and music downloads</h1>
-      <p className="lead">Download TikTok videos, Instagram reels, Pinterest videos, YouTube clips, and music in seconds with a fast, free, no-login downloader.</p>
-      <div className="platformTabs">
+      <h1 className="panelTitle">
+        {activePlatform
+          ? `${activePlatform.label} Downloader`
+          : "Fast Downloads, No Login"}
+      </h1>
+      <p className="panelSubtitle">
+        {activePlatform
+          ? `Paste any ${activePlatform.label} URL below to download videos and images instantly.`
+          : "Download videos, images and music from any supported platform. No sign-up, no hassle."}
+      </p>
+
+      <div className="platformBar">
         {platformConfig.map((platform) => (
           <Link
             key={platform.key}
-            className={`platformTab ${platform.key === platformKey ? "active" : ""} ${mode === MODES.MUSIC ? "disabled" : ""}`}
+            className={`platformChip ${platform.key === platformKey ? "active" : ""} ${mode === MODES.MUSIC ? "disabled" : ""}`}
             to={mode === MODES.MUSIC ? "#" : `/platform/${platform.key}`}
-            onClick={(e) => {
-              if (mode === MODES.MUSIC) e.preventDefault();
-            }}
+            onClick={(e) => { if (mode === MODES.MUSIC) e.preventDefault(); }}
             aria-disabled={mode === MODES.MUSIC}
           >
             {platform.label}
           </Link>
         ))}
       </div>
-      <div className="modeTabs">
+
+      <div className="modeSwitch">
         <button
-          className={mode === MODES.MEDIA ? "active" : ""}
+          className={`modeBtn ${mode === MODES.MEDIA ? "active" : ""}`}
           type="button"
-          onClick={() => {
-            setMode(MODES.MEDIA);
-            navigate("/");
-          }}
+          onClick={() => { setMode(MODES.MEDIA); navigate("/"); }}
         >
-          Media
+          <Download size={14} /> Media
         </button>
         <button
-          className={mode === MODES.MUSIC ? "active" : ""}
+          className={`modeBtn ${mode === MODES.MUSIC ? "active" : ""}`}
           type="button"
-          onClick={() => {
-            setMode(MODES.MUSIC);
-            navigate("/music-downloader");
-          }}
+          onClick={() => { setMode(MODES.MUSIC); navigate("/music-downloader"); }}
         >
-          Music
+          <Music size={14} /> Music
         </button>
       </div>
+
       {mode === MODES.MEDIA && (
-        <div className="stack">
+        <div className="inputGroup">
           {!activePlatform && (
-            <p className="statusLine platformHint">Please Select the platform you wanna download from.</p>
+            <p className="platformHint">Select a platform above to get started</p>
           )}
           {activePlatform && (
-            <>
+            <div className="inputRow">
               <input
-                className="field compactField"
+                className="field"
                 type="url"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 onKeyDown={handleEnterAction}
-                placeholder={`Paste ${activePlatform.label} URL`}
+                placeholder={`Paste ${activePlatform.label} URL...`}
                 disabled={loading || searchingMusic}
               />
-              <div className="actionRow">
-                <button className="primaryBtn compactBtn" onClick={handleMediaDownload} type="button" disabled={loading || searchingMusic}>
-                  Download from {activePlatform.label}
-                </button>
-              </div>
-            </>
+              <button
+                className="primaryBtn"
+                onClick={handleMediaDownload}
+                type="button"
+                disabled={loading || searchingMusic || !url.trim()}
+              >
+                {loading ? <Loader size={14} className="shimmer" /> : <Download size={14} />}
+                {loading ? "Downloading" : "Download"}
+              </button>
+            </div>
           )}
         </div>
       )}
+
       {mode === MODES.MUSIC && (
-        <div className="stack">
-          <input
-            className="field compactField"
-            type="text"
-            value={musicQuery}
-            onChange={(e) => setMusicQuery(e.target.value)}
-            onKeyDown={handleEnterAction}
-            placeholder="Song or artist name"
-            disabled={loading || searchingMusic}
-          />
-          <div className="actionRow">
-            <button className="primaryBtn compactBtn" onClick={handleMusicSearch} type="button" disabled={loading || searchingMusic}>Find songs</button>
-            <button className="primaryBtn secondaryBtn compactBtn" onClick={handleRetryMusic} type="button" disabled={loading || searchingMusic}>Retry</button>
+        <div className="inputGroup">
+          <div className="inputRow">
+            <input
+              className="field"
+              type="text"
+              value={musicQuery}
+              onChange={(e) => setMusicQuery(e.target.value)}
+              onKeyDown={handleEnterAction}
+              placeholder="Song or artist name..."
+              disabled={loading || searchingMusic}
+            />
+            <button
+              className="primaryBtn"
+              onClick={handleMusicSearch}
+              type="button"
+              disabled={loading || searchingMusic || !musicQuery.trim()}
+            >
+              {searchingMusic ? <Loader size={14} /> : <Search size={14} />}
+              {searchingMusic ? "Searching" : "Find"}
+            </button>
+            <button
+              className="primaryBtn secondaryBtn"
+              onClick={handleRetryMusic}
+              type="button"
+              disabled={loading || searchingMusic}
+            >
+              <RefreshCw size={14} />
+            </button>
           </div>
-          <div className="songGrid">
-            {musicSuggestions.map((song) => (
-              <button key={song.id} className="songItem" type="button" onClick={() => handleMusicSelection(song)} disabled={loading || searchingMusic}>
-                {song.label}
-              </button>
-            ))}
-          </div>
+
+          {musicSuggestions.length > 0 && (
+            <div className="songGrid">
+              {musicSuggestions.map((song) => (
+                <button
+                  key={song.id}
+                  className="songItem"
+                  type="button"
+                  onClick={() => handleMusicSelection(song)}
+                  disabled={loading || searchingMusic}
+                >
+                  <span className="songNumber">#{song.id}</span>
+                  <span>{song.label}</span>
+                  <ArrowRight size={14} style={{ marginLeft: "auto", opacity: 0.4 }} />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
+
       {loading && (
-        <div className="progress">
-          <div className="progressBar" style={{ width: `${progress}%` }} />
+        <div className="progressSection">
+          <div className="progressTrack">
+            <div className="progressFill" style={{ width: `${progress}%` }} />
+          </div>
         </div>
       )}
-      <p className={`statusLine ${/please use a valid|pick a platform|failed|timed out|error/i.test(status) ? "warning" : ""}`}>{status}</p>
+
+      {status && (
+        <p className={`statusLine ${isWarning ? "warning" : progress >= 100 ? "success" : ""}`}>
+          {status}
+        </p>
+      )}
     </section>
   );
 }

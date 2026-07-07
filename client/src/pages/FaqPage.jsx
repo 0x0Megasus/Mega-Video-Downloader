@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { ChevronDown } from "lucide-react";
 
 const faqItems = [
   {
@@ -53,14 +54,14 @@ export default function FaqPage() {
 
   return (
     <section className="panel">
-      <h1>Frequently Asked Questions</h1>
-      <p className="lead">
+      <h1 className="panelTitle">Frequently Asked Questions</h1>
+      <p className="panelSubtitle">
         Answers about video downloading, music downloading, supported platforms, and best practices for fast downloads.
       </p>
       <div className="faqGrid">
         {faqItems.map((item) => (
           <details key={item.q} className="faqItem">
-            <summary>{item.q}</summary>
+            <summary>{item.q} <ChevronDown size={14} /></summary>
             <p>{item.a}</p>
           </details>
         ))}

@@ -1,7 +1,5 @@
 import { NavLink, Route, Routes } from "react-router-dom";
-import { FaNewspaper } from "react-icons/fa6";
-import { IoHomeSharp } from "react-icons/io5";
-import { RiQuestionAnswerFill } from "react-icons/ri";
+import { Home, Newspaper, HelpCircle } from "lucide-react";
 import HomePage from "./pages/HomePage";
 import BlogsPage from "./pages/BlogsPage";
 import BlogDetailsPage from "./pages/BlogDetailsPage";
@@ -15,16 +13,18 @@ export default function App() {
   return (
     <div className="appShell">
       <header className="topbar">
-        <Link to="/" className="brand">Downvid</Link>
+        <Link to="/" className="brand">
+          Down<span className="brandAccent">vid</span>
+        </Link>
         <nav className="mainNav">
           <NavLink to="/" className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}>
-            <IoHomeSharp /> Home
+            <Home size={15} /> Home
           </NavLink>
           <NavLink to="/blogs" className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}>
-            <FaNewspaper /> Blogs
+            <Newspaper size={15} /> Blogs
           </NavLink>
           <NavLink to="/faqs" className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}>
-            <RiQuestionAnswerFill /> FAQs
+            <HelpCircle size={15} /> FAQs
           </NavLink>
         </nav>
       </header>

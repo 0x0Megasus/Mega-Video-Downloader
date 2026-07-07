@@ -109,9 +109,9 @@ export default function BlogsPage() {
 
   return (
     <section className="panel">
-      <h1>Tech, AI and IT News</h1>
-      <p className="lead">Fresh auto-generated summaries are refreshed every hour from trusted public APIs.</p>
-      <div className="modeTabs blogTabs">
+      <h1 className="panelTitle">Tech, AI & IT News</h1>
+      <p className="panelSubtitle">Fresh auto-generated summaries refreshed every hour from trusted public APIs.</p>
+      <div className="blogTabs">
         <button className={mode === "latest" ? "active" : ""} type="button" onClick={() => setMode("latest")}>Latest</button>
         <button className={mode === "interesting" ? "active" : ""} type="button" onClick={() => setMode("interesting")}>Most Interesting</button>
       </div>
