@@ -580,11 +580,13 @@ async function connectTelegram() {
 
     const isDuplicate = error.message.includes("AUTH_KEY_DUPLICATED");
     const baseDelay = isDuplicate ? 30000 : 5000;
-    const delay = Math.min(baseDelay * connectionAttempts, 60000);
+    const delayRaw = Math.min(baseDelay * connectionAttempts, 60000);
+    const jitter = 0.5 + Math.random(); // 0.5–1.5x jitter
+    const delay = Math.round(delayRaw * jitter);
     if (isDuplicate) {
-      console.log(`⚠️ Session already in use by another instance. Retrying in ${delay / 1000} seconds...`);
+      console.log(`⚠️ Session in use elsewhere. Retrying in ${(delay / 1000).toFixed(1)} seconds...`);
     } else {
-      console.log(`⏰ Retrying in ${delay / 1000} seconds...`);
+      console.log(`⏰ Retrying in ${(delay / 1000).toFixed(1)} seconds...`);
     }
 
     reconnectTimer = setTimeout(() => {
@@ -1183,10 +1185,12 @@ app.get("/api/info/:id", (req, res) => {
 // ============================================
 // SERVER START
 // ============================================
-const FIRST_CONNECT_DELAY_MS = parseInt(process.env.FIRST_CONNECT_DELAY || "20000", 10);
+const FIRST_CONNECT_BASE_MS = parseInt(process.env.FIRST_CONNECT_DELAY || "20000", 10);
+const FIRST_CONNECT_JITTER_MS = Math.round(Math.random() * FIRST_CONNECT_BASE_MS);
+const firstConnectDelay = FIRST_CONNECT_BASE_MS + FIRST_CONNECT_JITTER_MS;
 setTimeout(() => {
   if (!client && !reconnectTimer && !reconnectionInProgress) connectTelegram();
-}, FIRST_CONNECT_DELAY_MS);
+}, firstConnectDelay);
 
 const server = app.listen(CONFIG.PORT, () => {
   console.log(`🚀 Server running on port ${CONFIG.PORT}`);
