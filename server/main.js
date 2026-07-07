@@ -488,8 +488,21 @@ let ready = false;
 let connectionAttempts = 0;
 let reconnectTimer = null;
 let keepAliveTimer = null;
+let reconnectionInProgress = false;
 
 const TELEGRAM_DC = CONFIG.TELEGRAM_DC;
+
+function triggerReconnect() {
+  if (reconnectionInProgress || reconnectTimer) return;
+  reconnectionInProgress = true;
+  ready = false;
+  console.log("🔄 Initiating reconnection...");
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    reconnectionInProgress = false;
+    connectTelegram();
+  }, 1000);
+}
 
 async function connectTelegram() {
   try {
@@ -548,6 +561,7 @@ async function connectTelegram() {
     bot = newBot;
     ready = true;
     connectionAttempts = 0;
+    reconnectionInProgress = false;
 
     console.log("✅ Telegram ready and connected!");
   } catch (error) {
@@ -566,18 +580,27 @@ startKeepAlive();
 function startKeepAlive() {
   if (keepAliveTimer) clearInterval(keepAliveTimer);
 
+  let keepAliveFailures = 0;
+
   keepAliveTimer = setInterval(async () => {
     if (client) {
       try {
         await client.invoke(new Api.ping.Ping({ ping_id: BigInt(Date.now()) }));
+        keepAliveFailures = 0;
         if (!ready) {
           console.log("✅ Connection restored, marking as ready");
           ready = true;
         }
       } catch {
+        keepAliveFailures++;
         if (ready) {
-          console.log("💓 Keep-alive failed (temporary)");
+          console.log(`💓 Keep-alive failed (attempt ${keepAliveFailures})`);
           ready = false;
+        }
+        if (keepAliveFailures >= 3) {
+          console.log("⚠️ Keep-alive: too many failures, triggering reconnect");
+          keepAliveFailures = 0;
+          triggerReconnect();
         }
       }
     }
@@ -587,12 +610,18 @@ function startKeepAlive() {
 }
 
 async function ensureConnection() {
-  if (!client) throw new Error("Telegram client not initialized");
+  if (!client) {
+    triggerReconnect();
+    throw new Error("Service is busy right now. Please try again shortly.");
+  }
   if (!ready) {
     try {
       await client.invoke(new Api.ping.Ping({ ping_id: BigInt(Date.now()) }));
       ready = true;
+      console.log("✅ Connection restored via ensureConnection");
     } catch {
+      console.log("⚠️ ensureConnection: ping failed, triggering reconnect");
+      triggerReconnect();
       throw new Error("Service is busy right now. Please try again shortly.");
     }
   }
