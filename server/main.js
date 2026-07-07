@@ -1183,7 +1183,10 @@ app.get("/api/info/:id", (req, res) => {
 // ============================================
 // SERVER START
 // ============================================
-connectTelegram();
+const FIRST_CONNECT_DELAY_MS = parseInt(process.env.FIRST_CONNECT_DELAY || "20000", 10);
+setTimeout(() => {
+  if (!client && !reconnectTimer && !reconnectionInProgress) connectTelegram();
+}, FIRST_CONNECT_DELAY_MS);
 
 const server = app.listen(CONFIG.PORT, () => {
   console.log(`🚀 Server running on port ${CONFIG.PORT}`);
