@@ -493,18 +493,15 @@ let reconnectionInProgress = false;
 const TELEGRAM_DC = CONFIG.TELEGRAM_DC;
 
 function triggerReconnect() {
-  if (reconnectionInProgress || reconnectTimer) return;
+  if (reconnectionInProgress) return;
   reconnectionInProgress = true;
   ready = false;
   console.log("🔄 Initiating reconnection...");
-  reconnectTimer = setTimeout(() => {
-    reconnectTimer = null;
-    reconnectionInProgress = false;
-    connectTelegram();
-  }, 1000);
+  connectTelegram();
 }
 
 async function connectTelegram() {
+  reconnectionInProgress = true;
   try {
     connectionAttempts++;
     console.log(`🔌 Connecting to Telegram DC${TELEGRAM_DC.id} (attempt ${connectionAttempts})...`);
@@ -571,7 +568,12 @@ async function connectTelegram() {
     const delay = Math.min(5000 * connectionAttempts, 30000);
     console.log(`⏰ Retrying in ${delay / 1000} seconds...`);
 
-    reconnectTimer = setTimeout(connectTelegram, delay);
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      connectTelegram();
+    }, delay);
+  } finally {
+    reconnectionInProgress = false;
   }
 }
 
@@ -585,7 +587,10 @@ function startKeepAlive() {
   keepAliveTimer = setInterval(async () => {
     if (client) {
       try {
-        await client.invoke(new Api.ping.Ping({ ping_id: BigInt(Date.now()) }));
+        await Promise.race([
+          client.invoke(new Api.ping.Ping({ ping_id: BigInt(Date.now()) })),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Ping timeout")), 5000)),
+        ]);
         keepAliveFailures = 0;
         if (!ready) {
           console.log("✅ Connection restored, marking as ready");
@@ -616,11 +621,14 @@ async function ensureConnection() {
   }
   if (!ready) {
     try {
-      await client.invoke(new Api.ping.Ping({ ping_id: BigInt(Date.now()) }));
+      await Promise.race([
+        client.invoke(new Api.ping.Ping({ ping_id: BigInt(Date.now()) })),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Ping timeout")), 5000)),
+      ]);
       ready = true;
       console.log("✅ Connection restored via ensureConnection");
-    } catch {
-      console.log("⚠️ ensureConnection: ping failed, triggering reconnect");
+    } catch (err) {
+      console.log(`⚠️ ensureConnection: ${err?.message || "ping failed"}, triggering reconnect`);
       triggerReconnect();
       throw new Error("Service is busy right now. Please try again shortly.");
     }
