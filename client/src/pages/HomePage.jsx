@@ -40,9 +40,9 @@ const parseErrorMessage = async (response) => {
   return (await response.text()) || "Server error";
 };
 
-export default function HomePage({ platformKey = "", forceMode = "" }) {
+export default function HomePage({ platformKey = "instagram", forceMode = "" }) {
   const navigate = useNavigate();
-  const activePlatform = platformConfig.find((item) => item.key === platformKey) || null;
+  const activePlatform = platformConfig.find((item) => item.key === platformKey) || platformConfig[2];
   const [mode, setMode] = useState(forceMode === MODES.MUSIC ? MODES.MUSIC : MODES.MEDIA);
   const [url, setUrl] = useState("");
   const [musicQuery, setMusicQuery] = useState("");
@@ -70,15 +70,10 @@ export default function HomePage({ platformKey = "", forceMode = "" }) {
   }, [mode]);
 
   useEffect(() => {
-    const pageTitle = activePlatform
-      ? `Free ${activePlatform.label} Video Downloader | Fast ${activePlatform.label} Download Tool`
-      : "Free Video Downloader & Music Downloader | YouTube TikTok Instagram Downloader";
-    const pageDescription = activePlatform
-      ? `${activePlatform.keyword} free with no login. Use Downvid to download ${activePlatform.label} reels, shorts, clips, and HD social media videos in seconds.`
-      : "Download TikTok videos, download Instagram videos, download Pinterest videos, download YouTube videos, and download Facebook videos free with no login.";
-    document.title = pageTitle;
+    if (!activePlatform) return;
+    document.title = `Free ${activePlatform.label} Video Downloader | Fast ${activePlatform.label} Download Tool`;
     const descriptionMeta = document.querySelector('meta[name="description"]');
-    if (descriptionMeta) descriptionMeta.setAttribute("content", pageDescription);
+    if (descriptionMeta) descriptionMeta.setAttribute("content", `${activePlatform.keyword} free with no login. Use Downvid to download ${activePlatform.label} reels, shorts, clips, and HD social media videos in seconds.`);
   }, [activePlatform]);
 
   const startProgressPolling = (id) => {
@@ -129,10 +124,6 @@ export default function HomePage({ platformKey = "", forceMode = "" }) {
 
   const handleMediaDownload = async () => {
     if (!url.trim() || loading || searchingMusic) return;
-    if (!activePlatform) {
-      setStatus("Pick a platform first, then paste the URL.");
-      return;
-    }
     if (activePlatform && !activePlatform.pattern.test(url.trim())) {
       const suggestedPlatform = platformConfig.find((platform) => platform.pattern.test(url.trim()));
       if (suggestedPlatform) {
@@ -233,19 +224,15 @@ export default function HomePage({ platformKey = "", forceMode = "" }) {
     handleMusicSearch();
   };
 
-  const isWarning = /please use a valid|pick a platform|failed|timed out|error|not found|no songs/i.test(status);
+  const isWarning = /please use a valid|failed|timed out|error|not found|no songs/i.test(status);
 
   return (
     <section className="panel">
       <h1 className="panelTitle">
-        {activePlatform
-          ? `${activePlatform.label} Downloader`
-          : "Fast Downloads, No Login"}
+        {activePlatform.label} Downloader
       </h1>
       <p className="panelSubtitle">
-        {activePlatform
-          ? `Paste any ${activePlatform.label} URL below to download videos and images instantly.`
-          : "Download videos, images and music from any supported platform. No sign-up, no hassle."}
+        Paste any {activePlatform.label} URL below to download videos and images instantly.
       </p>
 
       <div className="platformBar">
@@ -266,7 +253,7 @@ export default function HomePage({ platformKey = "", forceMode = "" }) {
         <button
           className={`modeBtn ${mode === MODES.MEDIA ? "active" : ""}`}
           type="button"
-          onClick={() => { setMode(MODES.MEDIA); navigate("/"); }}
+          onClick={() => { setMode(MODES.MEDIA); navigate("/platform/instagram"); }}
         >
           <Download size={14} /> Media
         </button>
@@ -281,31 +268,26 @@ export default function HomePage({ platformKey = "", forceMode = "" }) {
 
       {mode === MODES.MEDIA && (
         <div className="inputGroup">
-          {!activePlatform && (
-            <p className="platformHint">Select a platform above to get started</p>
-          )}
-          {activePlatform && (
-            <div className="inputRow">
-              <input
-                className="field"
-                type="url"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                onKeyDown={handleEnterAction}
-                placeholder={`Paste ${activePlatform.label} URL...`}
-                disabled={loading || searchingMusic}
-              />
-              <button
-                className="primaryBtn"
-                onClick={handleMediaDownload}
-                type="button"
-                disabled={loading || searchingMusic || !url.trim()}
-              >
-                {loading ? <Loader size={14} className="shimmer" /> : <Download size={14} />}
-                {loading ? "Downloading" : "Download"}
-              </button>
-            </div>
-          )}
+          <div className="inputRow">
+            <input
+              className="field"
+              type="url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              onKeyDown={handleEnterAction}
+              placeholder={`Paste ${activePlatform.label} URL...`}
+              disabled={loading || searchingMusic}
+            />
+            <button
+              className="primaryBtn"
+              onClick={handleMediaDownload}
+              type="button"
+              disabled={loading || searchingMusic || !url.trim()}
+            >
+              {loading ? <Loader size={14} className="shimmer" /> : <Download size={14} />}
+              {loading ? "Downloading" : "Download"}
+            </button>
+          </div>
         </div>
       )}
 
