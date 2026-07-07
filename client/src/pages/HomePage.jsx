@@ -235,19 +235,19 @@ export default function HomePage({ platformKey = "instagram", forceMode = "" }) 
         Paste any {activePlatform.label} URL below to download videos and images instantly.
       </p>
 
-      <div className="platformBar">
-        {platformConfig.map((platform) => (
-          <Link
-            key={platform.key}
-            className={`platformChip ${platform.key === platformKey ? "active" : ""} ${mode === MODES.MUSIC ? "disabled" : ""}`}
-            to={mode === MODES.MUSIC ? "#" : `/platform/${platform.key}`}
-            onClick={(e) => { if (mode === MODES.MUSIC) e.preventDefault(); }}
-            aria-disabled={mode === MODES.MUSIC}
-          >
-            {platform.label}
-          </Link>
-        ))}
-      </div>
+      {mode === MODES.MEDIA && (
+        <div className="platformBar">
+          {platformConfig.map((platform) => (
+            <Link
+              key={platform.key}
+              className={`platformChip ${platform.key === platformKey ? "active" : ""}`}
+              to={`/platform/${platform.key}`}
+            >
+              {platform.label}
+            </Link>
+          ))}
+        </div>
+      )}
 
       <div className="modeSwitch">
         <button
