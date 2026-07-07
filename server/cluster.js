@@ -4,12 +4,18 @@ import net from "net";
 import { createHash } from "crypto";
 
 const cpus = os.availableParallelism?.() || os.cpus().length;
-const WORKER_COUNT = parseInt(process.env.WORKER_COUNT || String(Math.max(1, cpus - 1)), 10);
+const WORKER_COUNT = Math.min(
+  parseInt(process.env.WORKER_COUNT || "1", 10),
+  Math.max(1, cpus - 1)
+);
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const INTERNAL_BASE = PORT + 1;
 
 if (cluster.isPrimary) {
-  console.log(`🚀 Primary process ${process.pid} starting ${WORKER_COUNT} workers on port ${PORT}`);
+  console.log(`🚀 Primary process ${process.pid} starting ${WORKER_COUNT} worker${WORKER_COUNT > 1 ? "s" : ""} on port ${PORT}`);
+  if (WORKER_COUNT > 1) {
+    console.log("ℹ️  Multiple workers share the same Telegram session — set WORKER_COUNT=1 if you see AUTH_KEY_DUPLICATED errors");
+  }
 
   let workerCount = 0;
   let proxyServer = null;
