@@ -27,7 +27,6 @@ const CONFIG = {
   MUSIC_DOWNLOAD_TIMEOUT_MS: 150000,
   MEDIA_DOWNLOAD_TIMEOUT_MS: 120000,
   MAP_CLEANUP_INTERVAL_MS: 60000,
-  KEEPALIVE_INTERVAL_MS: 45000,
   MAX_FILES: 500,
   MAX_PROGRESS_ENTRIES: 1000,
   MAX_PENDING_MESSAGES: 200,
@@ -39,7 +38,8 @@ const CONFIG = {
   RATE_LIMIT_MAX_REQUESTS: 20,
   RATE_LIMIT_BURST: 5,
   REQUEST_TIMEOUT_MS: 30000,
-  TELEGRAM_CONNECTION_RETRIES: 2,
+  TELEGRAM_CONNECTION_RETRIES: 5,
+  TELEGRAM_RETRY_DELAY: 2000,
   TELEGRAM_TIMEOUT: 15,
   TELEGRAM_DC: { id: 4, ip: "149.154.167.91", port: 443 },
   GRACEFUL_SHUTDOWN_TIMEOUT_MS: 10000,
@@ -513,7 +513,6 @@ let bot = null;
 let ready = false;
 let connectionAttempts = 0;
 let reconnectTimer = null;
-let keepAliveTimer = null;
 let reconnectionInProgress = false;
 
 const TELEGRAM_DC = CONFIG.TELEGRAM_DC;
@@ -577,6 +576,7 @@ async function connectTelegram() {
       process.env.API_HASH,
       {
         connectionRetries: CONFIG.TELEGRAM_CONNECTION_RETRIES,
+        retryDelay: CONFIG.TELEGRAM_RETRY_DELAY,
         useWSS: false,
         baseDc: TELEGRAM_DC.id,
         ipVersion: 4,
@@ -624,42 +624,7 @@ async function connectTelegram() {
   }
 }
 
-startKeepAlive();
-
-function startKeepAlive() {
-  if (keepAliveTimer) clearInterval(keepAliveTimer);
-
-  let keepAliveFailures = 0;
-
-  keepAliveTimer = setInterval(async () => {
-    if (client) {
-      try {
-        await Promise.race([
-          client.invoke(new Api.ping.Ping({ ping_id: BigInt(Date.now()) })),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Ping timeout")), 5000)),
-        ]);
-        keepAliveFailures = 0;
-        if (!ready) {
-          console.log("✅ Connection restored, marking as ready");
-          ready = true;
-        }
-      } catch {
-        keepAliveFailures++;
-        if (ready) {
-          console.log(`💓 Keep-alive failed (attempt ${keepAliveFailures})`);
-          ready = false;
-        }
-        if (keepAliveFailures >= 3) {
-          console.log("⚠️ Keep-alive: too many failures, triggering reconnect");
-          keepAliveFailures = 0;
-          triggerReconnect();
-        }
-      }
-    }
-  }, CONFIG.KEEPALIVE_INTERVAL_MS);
-
-  if (keepAliveTimer.unref) keepAliveTimer.unref();
-}
+// Library's _updateLoop handles keep-alive internally via PingDelayDisconnect
 
 async function ensureConnection() {
   if (!client) {
@@ -667,18 +632,12 @@ async function ensureConnection() {
     throw new Error("Service is busy right now. Please try again shortly.");
   }
   if (!ready) {
-    try {
-      await Promise.race([
-        client.invoke(new Api.ping.Ping({ ping_id: BigInt(Date.now()) })),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Ping timeout")), 5000)),
-      ]);
+    if (client.connected) {
       ready = true;
-      console.log("✅ Connection restored via ensureConnection");
-    } catch (err) {
-      console.log(`⚠️ ensureConnection: ${err?.message || "ping failed"}, triggering reconnect`);
-      triggerReconnect();
-      throw new Error("Service is busy right now. Please try again shortly.");
+      return client;
     }
+    triggerReconnect();
+    throw new Error("Service is busy right now. Please try again shortly.");
   }
   return client;
 }
@@ -1053,7 +1012,7 @@ app.post("/api/music/search", async (req, res) => {
       if (inFlightMusicSearches.get(searchKey) === searchPromise) {
         inFlightMusicSearches.delete(searchKey);
       }
-    });
+    }).catch(() => {});
   }
 
   try {
@@ -1277,7 +1236,6 @@ const gracefulShutdown = async (signal) => {
 
   try {
     if (reconnectTimer) clearTimeout(reconnectTimer);
-    if (keepAliveTimer) clearInterval(keepAliveTimer);
 
     if (client) {
       try {
