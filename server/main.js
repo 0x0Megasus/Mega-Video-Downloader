@@ -420,6 +420,9 @@ const flattenReplyButtons = (msg) => {
   return options;
 };
 
+const TEXT_LINE_HEADER_PATTERN =
+  /^(🎵|🎶|🔍|⏳|search|result|found|loading|please wait|getting|here|top|trending|sorry|no|error|subscribe|menu|next|back|prev|settings|help|about|support|share|more|choose|select|available|listen|tap|pick|download)/i;
+
 const parseMusicOptionsFromText = (text = "") => {
   const lines = text
     .split(/\r?\n/)
@@ -429,10 +432,26 @@ const parseMusicOptionsFromText = (text = "") => {
   const options = [];
 
   for (const line of lines) {
-    const numberedMatch = line.match(/^(\d+)[\.\)-]\s*(.+)$/);
+    if (TEXT_LINE_HEADER_PATTERN.test(line)) continue;
+
+    let label = line;
+    let actionText = line;
+
+    const numberedMatch = line.match(/^(\d+)[\.)\-]\s*(.+)$/);
     if (numberedMatch?.[2]) {
-      options.push({ label: numberedMatch[2].trim(), action: { type: "text", text: numberedMatch[1] } });
+      label = numberedMatch[2].trim();
+      actionText = numberedMatch[1];
+    } else {
+      const bulletedMatch = line.match(/^[-*•]\s*(.+)$/);
+      if (bulletedMatch?.[1]) {
+        label = bulletedMatch[1].trim();
+        actionText = label;
+      } else if (line.length < 3) {
+        continue;
+      }
     }
+
+    options.push({ label, action: { type: "text", text: actionText } });
   }
 
   return options;
@@ -718,9 +737,12 @@ const performMusicSearch = async (query) => {
       if (!msg?.senderId || !bot || msg.senderId.value !== bot.id.value) return;
 
       const text = sanitizeLabel(msg.message || "");
-      if (!text || text.includes("⏳")) return;
+      console.log("[music-search] got bot message:", JSON.stringify(text.slice(0, 200)));
 
-      const { options } = parseBotResponse(msg, query);
+      if (!text || text.includes("⏳") || /^(searching|loading|please wait|getting|finding|looking)/i.test(text)) return;
+
+      const { rawOptions, options } = parseBotResponse(msg, query);
+      console.log(`[music-search] parsed raw=${rawOptions.length} options=${options.length}`);
 
       if (options.length > 0) {
         const sessionId = createId("music");
@@ -734,9 +756,12 @@ const performMusicSearch = async (query) => {
         return;
       }
 
-      if (/not found|no results|error|invalid/i.test(text)) {
+      if (/not found|no results|error|invalid|couldn'?t find|nothing found/i.test(text)) {
         done(new HttpError(404, text));
+        return;
       }
+
+      done(new HttpError(404, "No music results found"));
     };
 
     client.addEventHandler(handler, new NewMessage({}));
@@ -982,10 +1007,12 @@ app.post("/api/music/search", async (req, res) => {
 
   try {
     const payload = await searchPromise;
-    res.json(payload);
+    if (!res.headersSent) res.json(payload);
   } catch (error) {
     const status = Number.isInteger(error?.status) ? error.status : 500;
-    res.status(status).json({ error: error?.message || "Unable to search music right now" });
+    if (!res.headersSent) {
+      res.status(status).json({ error: error?.message || "Unable to search music right now" });
+    }
   }
 });
 
