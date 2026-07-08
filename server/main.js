@@ -1116,8 +1116,24 @@ app.post("/api/music/download", async (req, res) => {
       timeoutMs: CONFIG.MUSIC_DOWNLOAD_TIMEOUT_MS,
     });
 
-    const optionNumber = String(optionIndex + 1);
-    await client.sendMessage(bot, { message: optionNumber });
+    if (selectedOption.action.type === "callback") {
+      try {
+        await client.invoke(
+          new Api.messages.GetBotCallbackAnswer({
+            peer: bot,
+            msgId: session.messageId,
+            data: selectedOption.action.data,
+          })
+        );
+      } catch (callbackError) {
+        // BOT_RESPONSE_TIMEOUT means the bot didn't acknowledge the callback
+        // within Telegram's deadline — it's still processing the download and
+        // will likely send media which attachSingleMediaHandler will catch.
+        console.log(`⚠️ Music download callback warning: ${callbackError?.message || callbackError}`);
+      }
+    } else {
+      await client.sendMessage(bot, { message: selectedOption.action.text });
+    }
 
     musicSearchSessions.delete(sessionId);
     res.json({ id, platform: "Music", selected: selectedOption.label });
