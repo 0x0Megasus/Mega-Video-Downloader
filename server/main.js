@@ -8,7 +8,7 @@ import path from "path";
 import os from "os";
 import { TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
-import { NewMessage } from "telegram/events/index.js";
+import { NewMessage, EditedMessage } from "telegram/events/index.js";
 import { Api } from "telegram/tl/index.js";
 
 dns.setDefaultResultOrder('ipv4first');
@@ -272,8 +272,6 @@ const pendingMessages = new Map();
 const musicSearchSessions = new BoundedMap(CONFIG.MAX_MUSIC_SESSIONS, CONFIG.MUSIC_SESSION_TTL_MS);
 const inFlightMusicSearches = new Map();
 
-const TELEGRAM_LOCK = { locked: false, queue: [] };
-
 // ============================================
 // PLATFORM VALIDATION
 // ============================================
@@ -497,11 +495,6 @@ const filterMusicOptions = (options = [], query = "") => {
     if (/@\w+bot\b/.test(lower)) return false;
     if (/\b(add to group|more tracks|next|previous|prev|back)\b/i.test(lower)) return false;
 
-    if (/\bbot\b/.test(lower) && queryTokens.length > 0) {
-      const includesQuery = queryTokens.some((token) => lower.includes(token));
-      if (!includesQuery) return false;
-    }
-
     return true;
   });
 };
@@ -646,8 +639,6 @@ async function connectTelegram() {
   }
 }
 
-// Library's _updateLoop handles keep-alive internally via PingDelayDisconnect
-
 async function ensureConnection() {
   if (!client) {
     triggerReconnect();
@@ -722,12 +713,19 @@ const performMusicSearch = async (query) => {
   return new Promise((resolve, reject) => {
     let completed = false;
     let timer;
+    let firstBotMsgAt = 0;
+    let graceTimer = null;
+
+    const clearHandlers = () => {
+      try { client.removeEventHandler(handler); } catch {}
+    };
 
     const done = (err, result) => {
       if (completed) return;
       completed = true;
       clearTimeout(timer);
-      try { client.removeEventHandler(handler); } catch {}
+      if (graceTimer) clearTimeout(graceTimer);
+      clearHandlers();
       if (err) reject(err);
       else resolve(result);
     };
@@ -745,6 +743,7 @@ const performMusicSearch = async (query) => {
       console.log(`[music-search] parsed raw=${rawOptions.length} options=${options.length}`);
 
       if (options.length > 0) {
+        if (graceTimer) clearTimeout(graceTimer);
         const sessionId = createId("music");
         musicSearchSessions.set(sessionId, {
           messageId: msg.id,
@@ -761,10 +760,16 @@ const performMusicSearch = async (query) => {
         return;
       }
 
-      done(new HttpError(404, "No music results found"));
+      if (!firstBotMsgAt) {
+        firstBotMsgAt = Date.now();
+        graceTimer = setTimeout(() => {
+          done(new HttpError(404, "No music results found"));
+        }, 8000);
+      }
     };
 
     client.addEventHandler(handler, new NewMessage({}));
+    client.addEventHandler(handler, new EditedMessage({}));
 
     timer = setTimeout(() => {
       done(new HttpError(504, "Music search timed out. Please try again."));
@@ -866,21 +871,23 @@ const attachSingleMediaHandler = ({ id, platform, onTextMessage, timeoutMs = CON
     requestAt: createdAt,
   });
 
-  const timeout = setTimeout(() => {
-    if (!pendingMessages.has(id)) return;
-    pendingMessages.delete(id);
+  const clearHandlers = () => {
     if (client) {
       try { client.removeEventHandler(handler); } catch {}
     }
+  };
+
+  const timeout = setTimeout(() => {
+    if (!pendingMessages.has(id)) return;
+    pendingMessages.delete(id);
+    clearHandlers();
     pushFileError(id, "Download timed out. Please try again.", platform);
   }, timeoutMs);
 
   const cleanup = () => {
     clearTimeout(timeout);
     pendingMessages.delete(id);
-    if (client) {
-      try { client.removeEventHandler(handler); } catch {}
-    }
+    clearHandlers();
   };
 
   const handler = async (event) => {
@@ -914,6 +921,7 @@ const attachSingleMediaHandler = ({ id, platform, onTextMessage, timeoutMs = CON
   };
 
   client.addEventHandler(handler, new NewMessage({}));
+  client.addEventHandler(handler, new EditedMessage({}));
   return cleanup;
 };
 
@@ -930,7 +938,6 @@ app.get("/health", (req, res) => {
       pendingMessages: pendingMessages.size,
       musicSessions: musicSearchSessions.size,
       inflightSearches: inFlightMusicSearches.size,
-      queueLength: TELEGRAM_LOCK.queue.length,
     },
     memory: process.memoryUsage(),
   });
