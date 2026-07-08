@@ -8,7 +8,8 @@ import path from "path";
 import os from "os";
 import { TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
-import { NewMessage, EditedMessage } from "telegram/events/index.js";
+import { NewMessage } from "telegram/events/index.js";
+import { EditedMessage } from "telegram/events/EditedMessage.js";
 import { Api } from "telegram/tl/index.js";
 
 dns.setDefaultResultOrder('ipv4first');
