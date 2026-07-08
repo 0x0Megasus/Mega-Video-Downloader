@@ -736,10 +736,18 @@ const performMusicSearch = async (query) => {
           const options = filterMusicOptions(rawOptions, query);
 
           if (options.length === 0) {
-            const setupButtonFound = rawOptions.some((option) =>
+            const allControlButtons = rawOptions.length > 0 && rawOptions.every((o) =>
+              isSystemMusicButton(o?.label || "")
+            );
+            if (allControlButtons) {
+              completeOnce(() => reject(new HttpError(404, "No music results found")));
+              return;
+            }
+
+            const hasControlButton = rawOptions.some((option) =>
               isSystemMusicButton(option?.label || "")
             );
-            if (setupButtonFound) return;
+            if (hasControlButton) return;
 
             if (/not found|no results|error|invalid/i.test(text)) {
               completeOnce(() => reject(new HttpError(404, text)));
