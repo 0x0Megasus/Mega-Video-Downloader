@@ -271,7 +271,6 @@ const progressMap = new BoundedMap(CONFIG.MAX_PROGRESS_ENTRIES, CONFIG.MAX_PROGR
 const pendingMessages = new Map();
 const musicSearchSessions = new BoundedMap(CONFIG.MAX_MUSIC_SESSIONS, CONFIG.MUSIC_SESSION_TTL_MS);
 const inFlightMusicSearches = new Map();
-const musicEventHandlers = new Map();
 
 const TELEGRAM_LOCK = { locked: false, queue: [] };
 
@@ -690,112 +689,61 @@ const processTelegramQueue = () => {
 // ============================================
 // MUSIC SEARCH (with proper error handling)
 // ============================================
+const parseBotResponse = (msg, query) => {
+  const buttonOptions = flattenReplyButtons(msg);
+  const textOptions = parseMusicOptionsFromText(msg.message || "");
+  const rawOptions = buttonOptions.length > 0
+    ? [...buttonOptions, ...textOptions]
+    : textOptions;
+  const options = filterMusicOptions(rawOptions, query);
+  return { rawOptions, options };
+};
+
 const performMusicSearch = async (query) => {
-  let completed = false;
-  let timeout;
-  let handler;
-  let handlerAttached = false;
-  const searchId = createId("search");
+  const sentMsg = await client.sendMessage(bot, { message: query });
+  const afterId = sentMsg.id;
 
-  const cleanup = () => {
-    if (completed) return;
-    completed = true;
-    clearTimeout(timeout);
-    if (handlerAttached && client) {
-      try {
-        client.removeEventHandler(handler);
-      } catch {
-        // Handler cleanup failed - non-critical
-      }
-      handlerAttached = false;
+  const deadline = Date.now() + CONFIG.MUSIC_SEARCH_TIMEOUT_MS;
+
+  while (Date.now() < deadline) {
+    let msgs;
+    try {
+      msgs = await client.getMessages(bot, { limit: 10 });
+    } catch {
+      await new Promise((r) => setTimeout(r, 1500));
+      continue;
     }
-    musicEventHandlers.delete(searchId);
-  };
 
-  const completeOnce = (fn) => {
-    if (completed) return;
-    cleanup();
-    fn();
-  };
+    const candidates = msgs.filter(
+      (m) => m.id > afterId && m.senderId?.value === bot.id.value && m.message
+    );
 
-  return new Promise((resolve, reject) => {
-    handler = async (event) => {
-      const msg = event.message;
-      if (!msg?.senderId || !bot || msg.senderId.value !== bot.id.value) return;
-      if (completed) return;
+    for (const msg of candidates) {
+      const text = sanitizeLabel(msg.message || "");
+      if (!text || text.includes("⏳")) continue;
 
-      try {
-        if (msg.message) {
-          const text = sanitizeLabel(msg.message || "");
-          if (!text) return;
-          if (text.includes("⏳")) return;
+      const { rawOptions, options } = parseBotResponse(msg, query);
 
-          const buttonOptions = flattenReplyButtons(msg);
-          const textOptions = parseMusicOptionsFromText(msg.message || "");
-          const rawOptions = buttonOptions.length > 0 ? [...buttonOptions, ...textOptions] : textOptions;
-          const options = filterMusicOptions(rawOptions, query);
-
-          if (options.length === 0) {
-            const allControlButtons = rawOptions.length > 0 && rawOptions.every((o) =>
-              isSystemMusicButton(o?.label || "")
-            );
-            if (allControlButtons) {
-              completeOnce(() => reject(new HttpError(404, "No music results found")));
-              return;
-            }
-
-            const hasControlButton = rawOptions.some((option) =>
-              isSystemMusicButton(option?.label || "")
-            );
-            if (hasControlButton) return;
-
-            if (/not found|no results|error|invalid/i.test(text)) {
-              completeOnce(() => reject(new HttpError(404, text)));
-            }
-            return;
-          }
-
-          const sessionId = createId("music");
-          musicSearchSessions.set(sessionId, {
-            messageId: msg.id,
-            options,
-            createdAt: Date.now(),
-            query,
-          });
-
-          completeOnce(() => {
-            resolve({
-              sessionId,
-              query,
-              suggestions: serializeMusicOptions(options),
-            });
-          });
-        }
-      } catch (error) {
-        completeOnce(() => {
-          reject(new HttpError(500, error?.message || "Failed to read music suggestions"));
+      if (options.length > 0) {
+        const sessionId = createId("music");
+        musicSearchSessions.set(sessionId, {
+          messageId: msg.id,
+          options,
+          createdAt: Date.now(),
+          query,
         });
+        return { sessionId, query, suggestions: serializeMusicOptions(options) };
       }
-    };
 
-    timeout = setTimeout(() => {
-      completeOnce(() => reject(new HttpError(504, "Music search timed out. Please try again.")));
-    }, CONFIG.MUSIC_SEARCH_TIMEOUT_MS);
-
-    const startSearch = async () => {
-      try {
-        client.addEventHandler(handler, new NewMessage({}));
-        handlerAttached = true;
-        musicEventHandlers.set(searchId, { handler, searchId });
-
-        await client.sendMessage(bot, { message: query });
-      } catch (error) {
-        completeOnce(() => reject(new HttpError(500, error?.message || "Unable to search music right now")));
+      if (/not found|no results|error|invalid/i.test(text)) {
+        throw new HttpError(404, text);
       }
-    };
+    }
 
-    startSearch();
-  });
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+
+  throw new HttpError(504, "Music search timed out. Please try again.");
 };
 
 // ============================================
