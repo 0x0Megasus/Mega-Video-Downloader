@@ -700,51 +700,27 @@ const parseBotResponse = (msg, query) => {
 };
 
 const performMusicSearch = async (query) => {
-  const sentMsg = await client.sendMessage(bot, { message: query });
-  const afterDate = sentMsg.date;
+  return new Promise((resolve, reject) => {
+    let completed = false;
+    let timer;
 
-  const deadline = Date.now() + CONFIG.MUSIC_SEARCH_TIMEOUT_MS;
+    const done = (err, result) => {
+      if (completed) return;
+      completed = true;
+      clearTimeout(timer);
+      try { client.removeEventHandler(handler); } catch {}
+      if (err) reject(err);
+      else resolve(result);
+    };
 
-  while (Date.now() < deadline) {
-    let result;
-    try {
-      const inputPeer = await client.getInputEntity(bot);
-      result = await client.invoke(new Api.messages.GetHistory({
-        peer: inputPeer,
-        limit: 10,
-        offsetId: 0,
-        offsetDate: 0,
-        addOffset: 0,
-        maxId: 0,
-        minId: 0,
-        hash: BigInt(0),
-      }));
-    } catch (e) {
-      console.error("[poll] getHistory failed:", e?.message);
-      await new Promise((r) => setTimeout(r, 1500));
-      continue;
-    }
+    const handler = (event) => {
+      const msg = event.message;
+      if (!msg?.senderId || !bot || msg.senderId.value !== bot.id.value) return;
 
-    const msgs = result.messages || [];
-    if (msgs.length === 0) {
-      await new Promise((r) => setTimeout(r, 1500));
-      continue;
-    }
-
-    const candidates = msgs.filter(
-      (m) => m.date > afterDate && m.senderId?.value === bot.id.value
-    );
-
-    if (candidates.length === 0) {
-      await new Promise((r) => setTimeout(r, 1500));
-      continue;
-    }
-
-    for (const msg of candidates) {
       const text = sanitizeLabel(msg.message || "");
-      if (!text || text.includes("⏳")) continue;
+      if (!text || text.includes("⏳")) return;
 
-      const { rawOptions, options } = parseBotResponse(msg, query);
+      const { options } = parseBotResponse(msg, query);
 
       if (options.length > 0) {
         const sessionId = createId("music");
@@ -754,18 +730,25 @@ const performMusicSearch = async (query) => {
           createdAt: Date.now(),
           query,
         });
-        return { sessionId, query, suggestions: serializeMusicOptions(options) };
+        done(null, { sessionId, query, suggestions: serializeMusicOptions(options) });
+        return;
       }
 
       if (/not found|no results|error|invalid/i.test(text)) {
-        throw new HttpError(404, text);
+        done(new HttpError(404, text));
       }
-    }
+    };
 
-    await new Promise((r) => setTimeout(r, 1500));
-  }
+    client.addEventHandler(handler, new NewMessage({}));
 
-  throw new HttpError(504, "Music search timed out. Please try again.");
+    timer = setTimeout(() => {
+      done(new HttpError(504, "Music search timed out. Please try again."));
+    }, CONFIG.MUSIC_SEARCH_TIMEOUT_MS);
+
+    client.sendMessage(bot, { message: query }).catch((e) => {
+      done(new HttpError(500, e?.message || "Unable to search music right now"));
+    });
+  });
 };
 
 // ============================================
