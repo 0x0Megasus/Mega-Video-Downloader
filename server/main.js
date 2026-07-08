@@ -701,22 +701,44 @@ const parseBotResponse = (msg, query) => {
 
 const performMusicSearch = async (query) => {
   const sentMsg = await client.sendMessage(bot, { message: query });
-  const afterId = sentMsg.id;
+  const afterDate = sentMsg.date;
 
   const deadline = Date.now() + CONFIG.MUSIC_SEARCH_TIMEOUT_MS;
 
   while (Date.now() < deadline) {
-    let msgs;
+    let result;
     try {
-      msgs = await client.getMessages(bot, { limit: 10 });
-    } catch {
+      const inputPeer = await client.getInputEntity(bot);
+      result = await client.invoke(new Api.messages.GetHistory({
+        peer: inputPeer,
+        limit: 10,
+        offsetId: 0,
+        offsetDate: 0,
+        addOffset: 0,
+        maxId: 0,
+        minId: 0,
+        hash: BigInt(0),
+      }));
+    } catch (e) {
+      console.error("[poll] getHistory failed:", e?.message);
+      await new Promise((r) => setTimeout(r, 1500));
+      continue;
+    }
+
+    const msgs = result.messages || [];
+    if (msgs.length === 0) {
       await new Promise((r) => setTimeout(r, 1500));
       continue;
     }
 
     const candidates = msgs.filter(
-      (m) => m.id > afterId && m.senderId?.value === bot.id.value && m.message
+      (m) => m.date > afterDate && m.senderId?.value === bot.id.value
     );
+
+    if (candidates.length === 0) {
+      await new Promise((r) => setTimeout(r, 1500));
+      continue;
+    }
 
     for (const msg of candidates) {
       const text = sanitizeLabel(msg.message || "");
