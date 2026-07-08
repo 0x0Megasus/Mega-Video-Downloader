@@ -17,16 +17,16 @@ if (cluster.isPrimary) {
     console.log("ℹ️  Multiple workers share the same Telegram session — set WORKER_COUNT=1 if you see AUTH_KEY_DUPLICATED errors");
   }
 
-  let workerCount = 0;
+  const readyWorkers = new Set();
   let proxyServer = null;
 
   for (let i = 0; i < WORKER_COUNT; i++) {
     const env = { ...process.env, PORT: String(INTERNAL_BASE + i), CLUSTER_WORKER_INDEX: String(i) };
     const worker = cluster.fork(env);
     worker.on("message", (msg) => {
-      if (msg?.type === "ready") {
-        workerCount++;
-        if (workerCount === WORKER_COUNT) {
+      if (msg?.type === "ready" && worker.process.pid) {
+        readyWorkers.add(worker.process.pid);
+        if (readyWorkers.size === WORKER_COUNT) {
           console.log(`✅ All ${WORKER_COUNT} workers ready`);
           startProxy();
         }
@@ -35,7 +35,7 @@ if (cluster.isPrimary) {
   }
 
   cluster.on("exit", (worker, code, signal) => {
-    workerCount--;
+    if (worker.process.pid) readyWorkers.delete(worker.process.pid);
     console.log(`❌ Worker ${worker.process.pid} exited (code: ${code}, signal: ${signal})`);
     if (signal !== "SIGTERM" && signal !== "SIGINT") {
       console.log(`🔄 Restarting worker...`);
@@ -43,7 +43,9 @@ if (cluster.isPrimary) {
       const env = { ...process.env, PORT: String(INTERNAL_BASE + i), CLUSTER_WORKER_INDEX: String(i) };
       const newWorker = cluster.fork(env);
       newWorker.on("message", (msg) => {
-        if (msg?.type === "ready") workerCount++;
+        if (msg?.type === "ready" && newWorker.process.pid) {
+          readyWorkers.add(newWorker.process.pid);
+        }
       });
     }
   });

@@ -1,13 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Download, Music, Search, RefreshCw, Loader } from "lucide-react";
-
-const normalizeApiBase = (rawUrl) => {
-  const value = (rawUrl || "").trim();
-  if (!value) return "http://localhost:5000";
-  const withProtocol = /^https?:\/\//i.test(value) ? value : `https://${value}`;
-  return withProtocol.replace(/\/+$/, "");
-};
+import { normalizeApiBase, parseErrorMessage } from "../utils/api.js";
 
 const MODES = { MEDIA: "media", MUSIC: "music" };
 const API = normalizeApiBase(import.meta.env.VITE_API_URL);
@@ -29,15 +23,6 @@ const getClientId = () => {
   const generated = window.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
   window.localStorage.setItem(CLIENT_ID_STORAGE_KEY, generated);
   return generated;
-};
-
-const parseErrorMessage = async (response) => {
-  const contentType = response.headers.get("content-type") || "";
-  if (contentType.includes("application/json")) {
-    const data = await response.json();
-    return data?.error || "Server error";
-  }
-  return (await response.text()) || "Server error";
 };
 
 export default function HomePage({ platformKey = "instagram", forceMode = "" }) {

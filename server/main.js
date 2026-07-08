@@ -2,6 +2,10 @@ import express from "express";
 import dotenv from "dotenv";
 import dns from "dns";
 import net from "net";
+import fs from "fs/promises";
+import { existsSync, createReadStream } from "fs";
+import path from "path";
+import os from "os";
 import { TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
 import { NewMessage } from "telegram/events/index.js";
@@ -40,6 +44,8 @@ const CONFIG = {
   TELEGRAM_DC: { id: 4, ip: "149.154.167.91", port: 443 },
   GRACEFUL_SHUTDOWN_TIMEOUT_MS: 10000,
 };
+
+const TEMP_DIR = path.join(os.tmpdir(), "downvid");
 
 const app = express();
 
@@ -155,10 +161,12 @@ class BoundedMap {
   #maxSize;
   #ttlMs;
   #cleanupInterval;
+  #onDelete;
 
-  constructor(maxSize = 1000, ttlMs = 10 * 60 * 1000) {
+  constructor(maxSize = 1000, ttlMs = 10 * 60 * 1000, onDelete = null) {
     this.#maxSize = maxSize;
     this.#ttlMs = ttlMs;
+    this.#onDelete = typeof onDelete === "function" ? onDelete : null;
 
     this.#cleanupInterval = setInterval(() => {
       this.#evictStale();
@@ -188,6 +196,8 @@ class BoundedMap {
   }
 
   delete(key) {
+    const entry = this.#map.get(key);
+    if (entry) this.#onDelete?.(key, entry.value);
     return this.#map.delete(key);
   }
 
@@ -220,6 +230,7 @@ class BoundedMap {
     for (const [key, entry] of this.#map.entries()) {
       if (now - entry.ts > this.#ttlMs) {
         this.#map.delete(key);
+        this.#onDelete?.(key, entry.value);
       }
     }
   }
@@ -233,16 +244,29 @@ class BoundedMap {
         oldestKey = key;
       }
     }
-    if (oldestKey) this.#map.delete(oldestKey);
+    if (oldestKey) {
+      const entry = this.#map.get(oldestKey);
+      this.#map.delete(oldestKey);
+      this.#onDelete?.(oldestKey, entry.value);
+    }
   }
 
   destroy() {
     clearInterval(this.#cleanupInterval);
+    for (const [, entry] of this.#map) {
+      this.#onDelete?.(null, entry.value);
+    }
     this.#map.clear();
   }
 }
 
-const files = new BoundedMap(CONFIG.MAX_FILES, CONFIG.MAX_FILE_AGE_MS);
+const deleteTempFile = (_key, value) => {
+  if (value?.filePath) {
+    fs.unlink(value.filePath).catch(() => {});
+  }
+};
+
+const files = new BoundedMap(CONFIG.MAX_FILES, CONFIG.MAX_FILE_AGE_MS, deleteTempFile);
 const progressMap = new BoundedMap(CONFIG.MAX_PROGRESS_ENTRIES, CONFIG.MAX_PROGRESS_AGE_MS);
 const pendingMessages = new Map();
 const musicSearchSessions = new BoundedMap(CONFIG.MAX_MUSIC_SESSIONS, CONFIG.MUSIC_SESSION_TTL_MS);
@@ -865,8 +889,14 @@ const downloadMediaFromMessage = async ({ message, id, platform = "media" }) => 
     throw new Error("No media received from bot");
   }
 
+  // Write to temp file instead of holding buffer in memory
+  await fs.mkdir(TEMP_DIR, { recursive: true });
+  const filePath = path.join(TEMP_DIR, id);
+  await fs.writeFile(filePath, buffer);
+
+  // Free the buffer — only store metadata
   files.set(id, {
-    buffer,
+    filePath,
     type: fileType,
     ext: fileExt,
     mime: mimeType,
@@ -1100,8 +1130,14 @@ app.post("/api/music/download", async (req, res) => {
 app.get("/api/file/:id", async (req, res) => {
   const fileData = files.get(req.params.id);
 
-  if (!fileData || !fileData.buffer) {
+  if (!fileData || !fileData.filePath) {
     return res.status(404).json({ error: "File not found or expired" });
+  }
+
+  if (!existsSync(fileData.filePath)) {
+    files.delete(req.params.id);
+    progressMap.delete(req.params.id);
+    return res.status(404).json({ error: "File not found on disk" });
   }
 
   const timestamp = Date.now();
@@ -1133,12 +1169,21 @@ app.get("/api/file/:id", async (req, res) => {
 
   res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
   res.setHeader("Content-Type", contentType);
-  res.setHeader("Content-Length", fileData.buffer.length);
+  res.setHeader("Content-Length", fileData.size);
   res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   res.setHeader("Pragma", "no-cache");
   res.setHeader("Expires", "0");
 
-  res.send(fileData.buffer);
+  const readStream = createReadStream(fileData.filePath);
+  readStream.pipe(res);
+
+  readStream.on("error", () => {
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Failed to read file" });
+    }
+    files.delete(req.params.id);
+    progressMap.delete(req.params.id);
+  });
 
   res.on("finish", () => {
     files.delete(req.params.id);
@@ -1147,6 +1192,7 @@ app.get("/api/file/:id", async (req, res) => {
 
   res.on("close", () => {
     if (!res.writableEnded) {
+      readStream.destroy();
       files.delete(req.params.id);
       progressMap.delete(req.params.id);
     }
@@ -1172,13 +1218,13 @@ app.get("/api/info/:id", (req, res) => {
   const fileData = files.get(req.params.id);
 
   res.json({
-    exists: !!(fileData && fileData.buffer),
+    exists: !!(fileData && fileData.filePath),
     type: fileData?.type || null,
     ext: fileData?.ext || null,
     platform: fileData?.platform || null,
     error: fileData?.error || false,
     message: fileData?.message || null,
-    size: fileData?.buffer?.length || 0,
+    size: fileData?.size || 0,
   });
 });
 
