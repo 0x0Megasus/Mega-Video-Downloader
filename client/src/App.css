@@ -372,6 +372,18 @@ input, button, textarea, select { font-family: inherit; }
   min-width: 0;
 }
 
+.progressFill.indeterminate {
+  width: 30%;
+  animation: progressIndeterminate 1.4s ease-in-out infinite;
+  background: linear-gradient(90deg, var(--accent), var(--accent-hover), var(--accent));
+  background-size: 200% 100%;
+}
+
+@keyframes progressIndeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+
 .statusLine {
   text-align: center;
   font-size: 13px;
@@ -381,12 +393,23 @@ input, button, textarea, select { font-family: inherit; }
   transition: all 0.2s ease;
 }
 
+.statusLine.loading {
+  animation: statusPulse 1.8s ease-in-out infinite;
+}
+
 .statusLine.warning {
   color: #f87171;
+  animation: none;
 }
 
 .statusLine.success {
   color: var(--accent);
+  animation: none;
+}
+
+@keyframes statusPulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
 }
 
 .faqGrid {

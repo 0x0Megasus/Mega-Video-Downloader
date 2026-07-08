@@ -335,13 +335,13 @@ export default function HomePage({ platformKey = "instagram", forceMode = "" }) 
       {loading && (
         <div className="progressSection">
           <div className="progressTrack">
-            <div className="progressFill" style={{ width: `${progress}%` }} />
+            <div className={`progressFill ${progress === 0 ? "indeterminate" : ""}`} style={{ width: progress === 0 ? undefined : `${progress}%` }} />
           </div>
         </div>
       )}
 
       {status && (
-        <p className={`statusLine ${isWarning ? "warning" : progress >= 100 ? "success" : ""}`}>
+        <p className={`statusLine ${isWarning ? "warning" : progress >= 100 ? "success" : loading ? "loading" : ""}`}>
           {status}
         </p>
       )}
