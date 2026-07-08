@@ -371,7 +371,9 @@ const createId = (prefix = "") => {
 const sanitizeLabel = (value = "") => {
   return value
     .replace(/\s+/g, " ")
-    .replace(/[\u200E\u200F]/g, "")
+    // Strip zero-width and invisible Unicode (ZWNJ, ZWJ, LRM, RLM, WJ, BOM,
+    // Hangul filler, various invisible control chars and narrow no-break space)
+    .replace(/[\u200B-\u200F\u2028\u2029\u202A-\u202F\u2060-\u2069\uFEFF\u00A0\u3164\u00AD]+/g, "")
     .trim();
 };
 
@@ -939,7 +941,7 @@ const attachSingleMediaHandler = ({ id, platform, onTextMessage, timeoutMs = CON
 
     if (msg.message && !msg.media) {
       const text = sanitizeLabel(msg.message || "");
-      if (!text) return;
+      if (!text || !/[\p{L}\p{N}]/u.test(text)) return;
       if (text.includes("⏳")) return;
 
       if (typeof onTextMessage === "function") {
