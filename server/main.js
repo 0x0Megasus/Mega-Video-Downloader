@@ -452,6 +452,10 @@ const SYSTEM_MUSIC_BUTTON_PATTERNS = [
   /^start$/i, /^help$/i, /^settings$/i, /^about$/i, /^support$/i,
   /^feedback$/i, /^privacy$/i, /^terms$/i, /^next$/i, /^previous$/i,
   /^prev$/i, /^back$/i, /^menu$/i,
+  /^subscribe$/i, /^my subscriptions?$/i, /^check subscriptions?$/i,
+  /^remove ads?$/i, /^\+?\s*remove ads?$/i,
+  /^premium$/i, /^donate$/i, /^invite friends?$/i, /^share$/i,
+  /^language$/i, /^my (account|profile)$/i, /^favorites$/i,
 ];
 
 const isSystemMusicButton = (label = "") => {
