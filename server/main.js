@@ -716,7 +716,7 @@ const performMusicSearch = async (query) => {
       const text = sanitizeLabel(msg.message || "");
       console.log("[music-search] got bot message:", JSON.stringify(text.slice(0, 200)));
 
-      if (!text || text.includes("⏳") || /^(searching|loading|please wait|getting|finding|looking)/i.test(text)) return;
+      if (text.includes("⏳") || /^(searching|loading|please wait|getting|finding|looking)/i.test(text)) return;
 
       const { rawOptions, options } = parseBotResponse(msg, query);
       console.log(`[music-search] parsed raw=${rawOptions.length} options=${options.length}`);
