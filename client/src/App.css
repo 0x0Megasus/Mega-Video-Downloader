@@ -79,7 +79,7 @@ input, button, textarea, select { font-family: inherit; }
   text-decoration: none;
   display: flex;
   align-items: center;
-  gap: 8px;
+  font-family: "JetBrains Mono", monospace;
 }
 
 .brandAccent {
