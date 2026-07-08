@@ -420,7 +420,7 @@ const flattenReplyButtons = (msg) => {
 };
 
 const TEXT_LINE_HEADER_PATTERN =
-  /^(🎵|🎶|🔍|⏳|search|result|found|loading|please wait|getting|here|top|trending|sorry|no|error|subscribe|menu|next|back|prev|settings|help|about|support|share|more|choose|select|available|listen|tap|pick|download)/i;
+  /^(🎵|🎶|🔍|⏳|🤖|search|result|found|loading|please wait|getting|here|top|trending|sorry|no|error|subscribe|menu|next|back|prev|settings|help|about|support|share|more|choose|select|available|listen|tap|pick|download)/i;
 
 const parseMusicOptionsFromText = (text = "") => {
   const lines = text
@@ -482,6 +482,25 @@ const isSystemMusicButton = (label = "") => {
   return SYSTEM_MUSIC_BUTTON_PATTERNS.some((pattern) => pattern.test(clean));
 };
 
+const SYSTEM_MUSIC_TEXT_PATTERNS = [
+  /\bcreate your own\b/i,
+  /\bwant the same\b/i,
+  /\bget your own\b/i,
+  /\bbuild your own\b/i,
+  /\bfor free\b/i,
+  /\btry it now\b/i,
+  /\bcheck it out\b/i,
+  /\byour own bot\b/i,
+  /\bno results?\b/i,
+  /\bnot found\b/i,
+];
+
+const isSystemMusicLabel = (label = "") => {
+  if (isSystemMusicButton(label)) return true;
+  const lower = label.toLowerCase();
+  return SYSTEM_MUSIC_TEXT_PATTERNS.some((pattern) => pattern.test(lower));
+};
+
 const filterMusicOptions = (options = [], query = "") => {
   const queryTokens = sanitizeLabel(query)
     .toLowerCase()
@@ -490,7 +509,7 @@ const filterMusicOptions = (options = [], query = "") => {
 
   return options.filter((option) => {
     const label = normalizeMusicOptionLabel(option?.label || "");
-    if (!label || isSystemMusicButton(label)) return false;
+    if (!label || isSystemMusicLabel(label)) return false;
 
     const lower = label.toLowerCase();
     if (/@\w+bot\b/.test(lower)) return false;
@@ -655,47 +674,6 @@ async function ensureConnection() {
   }
   return client;
 }
-
-// ============================================
-// TELEGRAM REQUEST QUEUE (prevents queue buildup)
-// ============================================
-const telegramRequest = async (fn) => {
-  await ensureConnection();
-
-  return new Promise((resolve, reject) => {
-    const execute = async () => {
-      try {
-        const result = await fn(client);
-        resolve(result);
-      } catch (error) {
-        reject(error);
-      }
-    };
-
-    if (TELEGRAM_LOCK.locked) {
-      TELEGRAM_LOCK.queue.push(execute);
-      if (TELEGRAM_LOCK.queue.length > 100) {
-        TELEGRAM_LOCK.queue.shift();
-      }
-    } else {
-      TELEGRAM_LOCK.locked = true;
-      execute().finally(() => {
-        processTelegramQueue();
-      });
-    }
-  });
-};
-
-const processTelegramQueue = () => {
-  const next = TELEGRAM_LOCK.queue.shift();
-  if (next) {
-    next().finally(() => {
-      processTelegramQueue();
-    });
-  } else {
-    TELEGRAM_LOCK.locked = false;
-  }
-};
 
 // ============================================
 // MUSIC SEARCH (with proper error handling)
