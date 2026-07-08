@@ -725,14 +725,14 @@ const performMusicSearch = async (query) => {
       if (completed) return;
 
       try {
-        if (msg.message && !msg.media) {
+        if (msg.message) {
           const text = sanitizeLabel(msg.message || "");
           if (!text) return;
           if (text.includes("⏳")) return;
 
           const buttonOptions = flattenReplyButtons(msg);
           const textOptions = parseMusicOptionsFromText(msg.message || "");
-          const rawOptions = buttonOptions.length > 0 ? buttonOptions : textOptions;
+          const rawOptions = buttonOptions.length > 0 ? [...buttonOptions, ...textOptions] : textOptions;
           const options = filterMusicOptions(rawOptions, query);
 
           if (options.length === 0) {
